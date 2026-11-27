@@ -55,7 +55,7 @@ enum TxKind: String, CaseIterable, Identifiable {
 }
 
 enum TxSource: String, CaseIterable {
-    case manual, sms, notification, applePay, recurring, debt, goal, siri
+    case manual, sms, notification, applePay, recurring, debt, goal, siri, receipt, screenshot
 
     var title: String {
         switch self {
@@ -67,6 +67,8 @@ enum TxSource: String, CaseIterable {
         case .debt: return "Qarz"
         case .goal: return "Maqsad"
         case .siri: return "Siri / Shortcuts"
+        case .receipt: return "Soliq cheki"
+        case .screenshot: return "Skrinshot"
         }
     }
 
@@ -80,6 +82,8 @@ enum TxSource: String, CaseIterable {
         case .debt: return "person.2.fill"
         case .goal: return "target"
         case .siri: return "waveform"
+        case .receipt: return "qrcode"
+        case .screenshot: return "text.viewfinder"
         }
     }
 }

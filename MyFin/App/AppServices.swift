@@ -10,6 +10,7 @@ final class AppRouter {
     var addKind: TxKind?
     var openTransactionID: UUID?
     var openVault = false
+    var capture: CaptureMode?
     private init() {}
 
     func handle(_ url: URL) {
@@ -23,6 +24,8 @@ final class AppRouter {
             if let id = value("id").flatMap(UUID.init(uuidString:)) { openTransactionID = id }
         case "vault":
             openVault = true
+        case "scan":
+            capture = value("mode") == "photo" ? .photo : .scan
         default:
             break
         }

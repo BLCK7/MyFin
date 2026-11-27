@@ -6,6 +6,7 @@ struct MoreView: View {
     @Query private var goals: [Goal]
     @Query private var recurring: [RecurringPayment]
     @Environment(RateStore.self) private var rates
+    @Environment(AppRouter.self) private var router
 
     var body: some View {
         NavigationStack {
@@ -18,6 +19,11 @@ struct MoreView: View {
                         tile("Doimiy to'lovlar", "repeat.circle.fill", "#06B6D4", "\(recurring.count) ta to'lov") { RecurringView() }
                         tile("Kategoriyalar", "square.grid.3x3.fill", "#EC4899", "Tahrirlash") { CategoriesView() }
                         tile("Valyuta kurslari", "dollarsign.arrow.circlepath", "#10B981", "USD \(Money.number(rates.rate("USD"), decimals: 0))") { RatesView() }
+                    }
+
+                    HStack(spacing: 12) {
+                        captureTile("Soliq cheki", "qrcode.viewfinder", "#22C55E", "QR skanerlash", .scan)
+                        captureTile("Skrinshot", "text.viewfinder", "#F97316", "Rasmdan o'qish", .photo)
                     }
 
                     NavigationLink {
@@ -46,7 +52,7 @@ struct MoreView: View {
                                 IconBadge(icon: "bolt.badge.automatic.fill", color: Palette.accent, size: 46)
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Kartalarni avtomatik kuzatish").font(.headline)
-                                    Text("Bank SMS va Apple Pay → MyFin (real vaqtda)")
+                                    Text("TBC, Uzum, Anor, Payme, Paynet, Wallet · jurnal")
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
@@ -80,6 +86,27 @@ struct MoreView: View {
             .screenBackground()
             .navigationTitle("Ko'proq")
         }
+    }
+
+    private func captureTile(_ title: String, _ icon: String, _ color: String, _ subtitle: String,
+                             _ mode: CaptureMode) -> some View {
+        Button {
+            Haptics.soft()
+            router.capture = mode
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                IconBadge(icon: icon, color: Color(hex: color), size: 42)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.subheadline.weight(.bold)).lineLimit(1)
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(.regular, in: .rect(cornerRadius: 24))
+            .contentShape(.rect(cornerRadius: 24))
+        }
+        .buttonStyle(.plain)
     }
 
     private func tile<Destination: View>(_ title: String, _ icon: String, _ color: String, _ subtitle: String,

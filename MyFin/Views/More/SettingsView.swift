@@ -220,6 +220,49 @@ struct AutomationView: View {
     @State private var parsed: ParsedSMS?
     @State private var tested = false
     @State private var result: String?
+    @State private var log: [AutomationEvent] = []
+    @State private var expandedBank: String?
+
+    private struct BankGuide: Identifiable {
+        let id: String
+        let icon: String
+        let color: String
+        let steps: [(String, String)]
+    }
+
+    private static func notificationSteps(app: String, field: String) -> [(String, String)] {
+        [("Bildirishnoma triggeri",
+          "Shortcuts → Avtomatizatsiya → “+” → “Bildirishnoma” (Notification) → Ilova: \(app). Matn shartini qo'ymang (yoki “so'm / UZS / сум” bo'lsa). “Darhol ishga tushirish”ni yoqing, “Ishga tushganda xabar bering”ni o'chiring."),
+         ("MyFin amali",
+          "“+ Amal” → MyFin → “Bank bildirishnomasini yozish”. Matn = Bildirishnoma → Body (Matn), Sarlavha = Title. “Ilova” maydoniga \(field) deb yozing — MyFin shu nom bo'yicha kartangizni topadi."),
+         ("Ilova bildirishnomalari yoqilgan bo'lsin",
+          "Sozlamalar → Bildirishnomalar → \(app) → ruxsat berilgan, “Ko'rinishlar”da matn ko'rinadigan bo'lsin. Telefon qulflangan holatda ham ishlashi uchun “Previews: Always”.")]
+    }
+
+    private var guides: [BankGuide] {
+        [
+            BankGuide(id: "TBC Bank", icon: "building.columns.fill", color: "#00A3E0",
+                      steps: Self.notificationSteps(app: "TBC UZ", field: "TBC") + [
+                        ("Visa karta Wallet'da bo'lsa", "Apple Pay bilan to'lansa, “Wallet (Apple Pay)” bo'limidagi Tranzaksiya triggerini ham qo'shing. Ikkalasi ishlasa ham operatsiya bir marta yoziladi.")
+                      ]),
+            BankGuide(id: "Wallet (Apple Pay)", icon: "wallet.pass.fill", color: "#111827",
+                      steps: [
+                        ("Tranzaksiya triggeri", "Shortcuts → Avtomatizatsiya → “+” → “Tranzaksiya” (Transaction) → Karta: TBC Visa (va boshqa Wallet kartalari) → “Darhol ishga tushirish”."),
+                        ("MyFin amali", "MyFin → “Apple Pay xaridini yozish”: Summa = Qisqa buyruq kiritmasi → Amount, Do'kon = Merchant, Karta = Card or Pass (Name)."),
+                        ("Karta nomi", "Hisoblar bo'limida kartaning Bank maydoniga “TBC” yozing yoki oxirgi 4 raqamni kiriting — MyFin xaridni to'g'ri kartaga yozadi.")
+                      ]),
+            BankGuide(id: "Uzum Bank", icon: "u.circle.fill", color: "#7000FF",
+                      steps: Self.notificationSteps(app: "Uzum Bank", field: "Uzum")),
+            BankGuide(id: "Anorbank", icon: "a.circle.fill", color: "#E11D48",
+                      steps: Self.notificationSteps(app: "Anorbank", field: "Anor")),
+            BankGuide(id: "Payme", icon: "p.circle.fill", color: "#00C2C2",
+                      steps: Self.notificationSteps(app: "Payme", field: "Payme") + [
+                        ("Qaysi karta", "Payme bildirishnomasida karta raqamining oxirgi 4 raqami bo'lsa, MyFin o'sha kartaga yozadi. Bo'lmasa, standart kartaga yoziladi — keyin tahrirlash mumkin.")
+                      ]),
+            BankGuide(id: "Paynet", icon: "p.square.fill", color: "#16A34A",
+                      steps: Self.notificationSteps(app: "Paynet", field: "Paynet"))
+        ]
+    }
 
     var body: some View {
         ScrollView {
@@ -227,28 +270,48 @@ struct AutomationView: View {
                 GlassCard(tint: Palette.accent) {
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Qanday ishlaydi", systemImage: "bolt.fill").font(.headline)
-                        Text("Bankdan SMS yoki bank ilovasidan bildirishnoma kelishi bilan iOS “Shortcuts” uning matnini MyFin'ga uzatadi. MyFin summani, karta raqamining oxirgi 4 raqamini, do'konni va qoldiqni ajratib, operatsiyani yozadi va karta balansini yangilaydi. Ilovani ochish shart emas.")
+                        Text("iOS hech bir ilovaga boshqa ilovalarning bildirishnomalarini o'qishga ruxsat bermaydi. Shuning uchun har bir bank uchun Shortcuts'da bir marta avtomatizatsiya yaratiladi: bildirishnoma, SMS yoki Apple Pay xaridi kelishi bilan Shortcuts matnni MyFin'ga uzatadi. Avtomatizatsiya yaratilmagan bo'lsa, MyFin hech narsani ko'rmaydi.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                Text("1-usul · Bank SMS").font(.headline).padding(.top, 4)
-                step(1, "Kartani qo'shing", "Hisoblar bo'limida kartani oxirgi 4 raqami bilan qo'shing. Notanish raqamli kartadan SMS kelsa, MyFin uni o'zi yaratadi.")
-                step(2, "Shortcuts → Avtomatizatsiya → Xabar", "Shortcuts → “Avtomatizatsiya” → “+” → “Xabar” (Message). Jo'natuvchi: UZCARD, HUMO, 13131 yoki bankingiz raqami. “Darhol ishga tushirish”ni tanlang.")
-                step(3, "MyFin amali", "Amal: MyFin → “Bank SMS'ini yozish”. “SMS matni” maydoniga “Qisqa buyruq kiritmasi → Kontent”ni bering.")
+                logCard
 
-                Text("2-usul · Bank ilovasi bildirishnomasi (iOS 27+)").font(.headline).padding(.top, 4)
-                step(1, "Bildirishnoma triggeri", "Shortcuts → “Avtomatizatsiya” → “+” → “Bildirishnoma” (When I get a notification) → ilovani tanlang: Uzum Bank, TBC, Kapitalbank, Anorbank, Click, Payme… Ixtiyoriy: matnda “so'm” yoki “UZS” bo'lsa.")
-                step(2, "MyFin amali", "Amal: MyFin → “Bank bildirishnomasini yozish”. Matn = bildirishnoma matni (Body), Sarlavha = sarlavha (Title). “Darhol ishga tushirish”ni tanlang.")
-                step(3, "Ikki marta yozilmaydi", "Bitta operatsiya SMS'dan ham, bildirishnomadan ham kelsa, MyFin 6 daqiqa ichidagi bir xil summani bitta deb hisoblaydi va faqat balansni yangilaydi.")
+                Text("Banklar bo'yicha sozlash").font(.headline).padding(.top, 4)
+                ForEach(guides) { g in
+                    GlassCard(padding: 14) {
+                        DisclosureGroup(isExpanded: Binding(
+                            get: { expandedBank == g.id },
+                            set: { expandedBank = $0 ? g.id : nil }
+                        )) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                ForEach(Array(g.steps.enumerated()), id: \.offset) { i, st in
+                                    stepRow(i + 1, st.0, st.1)
+                                }
+                            }
+                            .padding(.top, 10)
+                        } label: {
+                            HStack(spacing: 12) {
+                                IconBadge(icon: g.icon, color: Color(hex: g.color), size: 34)
+                                Text(g.id).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
+                            }
+                        }
+                        .tint(.primary)
+                    }
+                }
 
-                Text("3-usul · Telegram bot (CardXabar, HUMO) · iOS 27+").font(.headline).padding(.top, 4)
-                step(1, "Bot xabarlari", "Uzcard CardXabar yoki HUMO botiga kartani ulang. Telegram → Sozlamalar → Bildirishnomalar → “Xabar matnini ko'rsatish” yoqilgan bo'lsin.")
-                step(2, "Bildirishnoma triggeri", "Shortcuts → “Avtomatizatsiya” → “+” → “Bildirishnoma” → ilova: Telegram → sarlavhada “CardXabar” (yoki HUMO bot nomi) bo'lsa → “Darhol ishga tushirish”. Amal: MyFin → “Bank bildirishnomasini yozish”, Matn = Body, Sarlavha = Title.")
+                Text("Har qanday bank uchun · Back Tap skrinshot").font(.headline).padding(.top, 4)
+                step(1, "Qisqa buyruq yarating", "Shortcuts → “+” → amallar: “Skrinshot olish” (Take Screenshot) → MyFin “Skrinshotdan yozish” (Rasm = Skrinshot). Nomi: “MyFin skrinshot”.")
+                step(2, "Orqa tomonga ikki marta urish", "Sozlamalar → Universal kirish → Teginish → Orqaga teginish (Back Tap) → Ikki marta → “MyFin skrinshot”.")
+                step(3, "Ishlatish", "Bank yoki Wallet bildirishnomasi chiqqanda telefon orqasiga ikki marta tegining — MyFin ekrandagi summa, karta va do'konni o'qib, operatsiyani yozadi. Avtomatizatsiya ishlamay qolgan holatlar uchun zaxira usul.")
 
-                Text("4-usul · Apple Pay").font(.headline).padding(.top, 4)
-                step(1, "Tranzaksiya triggeri", "“Avtomatizatsiya” → “+” → “Tranzaksiya” (Transaction) → kartangiz → “Darhol”. Amal: MyFin → “Apple Pay xaridini yozish”; Summa, Do'kon, Karta maydonlariga kiritma qiymatlarini bering.")
+                Text("Bank SMS").font(.headline).padding(.top, 4)
+                step(1, "Xabar triggeri", "Shortcuts → Avtomatizatsiya → “+” → “Xabar” (Message) → Jo'natuvchi: bank raqami (UZCARD, HUMO, 13131…) → “Darhol ishga tushirish”.")
+                step(2, "MyFin amali", "MyFin → “Bank SMS'ini yozish”. “SMS matni” = Qisqa buyruq kiritmasi → Kontent.")
+
+                Text("Telegram bot (CardXabar, HUMO)").font(.headline).padding(.top, 4)
+                step(1, "Bildirishnoma triggeri", "Ilova: Telegram, sarlavhada “CardXabar” (yoki HUMO bot nomi) bo'lsa → “Darhol”. Amal: MyFin → “Bank bildirishnomasini yozish”, Matn = Body, Sarlavha = Title.")
 
                 Button {
                     if let url = URL(string: "shortcuts://") { openURL(url) }
@@ -277,6 +340,7 @@ struct AutomationView: View {
                             .buttonStyle(.glass)
                             Button("MyFin'ga yozish") {
                                 result = FinanceEngine.processSMS(sample, ctx: context)
+                                log = AutomationLog.all()
                             }
                             .buttonStyle(.glassProminent)
                             .disabled(SMSParser.parse(sample) == nil)
@@ -315,6 +379,71 @@ struct AutomationView: View {
         .screenBackground()
         .navigationTitle("Avtomatizatsiya")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { log = AutomationLog.all() }
+        .refreshable { log = AutomationLog.all() }
+    }
+
+    private var logCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label("Jurnal", systemImage: "list.bullet.clipboard").font(.headline)
+                    Spacer()
+                    if !log.isEmpty {
+                        Button("Tozalash") {
+                            AutomationLog.clear()
+                            log = []
+                        }
+                        .font(.caption.weight(.semibold))
+                    }
+                }
+                if log.isEmpty {
+                    Text("Hali hech bir avtomatizatsiya MyFin'ni chaqirmagan. Bank bildirishnomasi kelgan bo'lsa-yu bu yer bo'sh bo'lsa, demak Shortcuts avtomatizatsiyasi yaratilmagan yoki ishga tushmagan — pastdagi ko'rsatmani bajaring.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Oxirgi \(log.count) ta chaqiruv. Operatsiya yozilmagan bo'lsa, shu matnni menga yuboring — parserni moslashtiraman.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(log.prefix(10)) { e in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(e.source + (e.app.isEmpty ? "" : " · \(e.app)"))
+                                    .font(.caption.weight(.bold))
+                                Spacer()
+                                Text(e.date.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                            Text(e.input).font(.caption2).foregroundStyle(.secondary).lineLimit(3)
+                                .textSelection(.enabled)
+                            Text(e.result).font(.caption).lineLimit(3)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.primary.opacity(0.05), in: .rect(cornerRadius: 12))
+                        .contextMenu {
+                            Button {
+                                UIPasteboard.general.string = e.input
+                            } label: {
+                                Label("Matnni nusxalash", systemImage: "doc.on.doc")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func stepRow(_ n: Int, _ title: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("\(n)")
+                .font(.caption.weight(.bold).monospacedDigit())
+                .frame(width: 24, height: 24)
+                .background(Palette.accent.gradient, in: .circle)
+                .foregroundStyle(.white)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(text).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private func step(_ n: Int, _ title: String, _ text: String) -> some View {

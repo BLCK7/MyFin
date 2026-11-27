@@ -1,4 +1,5 @@
 import AppIntents
+import UniformTypeIdentifiers
 import SwiftData
 
 // MARK: Entities
@@ -216,6 +217,37 @@ struct OpenNewTransactionIntent: AppIntent {
     }
 }
 
+struct ScanReceiptIntent: AppIntent {
+    static let title: LocalizedStringResource = "Soliq chekini skanerlash"
+    static let description = IntentDescription("MyFin'ni chek QR kodini skanerlash oynasi bilan ochadi.")
+    static let openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        AppRouter.shared.capture = .scan
+        return .result()
+    }
+}
+
+struct LogScreenshotIntent: AppIntent {
+    static let title: LocalizedStringResource = "Skrinshotdan yozish"
+    static let description = IntentDescription("Bank ilovasi yoki Wallet bildirishnomasi skrinshotidan summa, karta va do'konni o'qib, operatsiyani yozadi.")
+    static let openAppWhenRun: Bool = false
+
+    @Parameter(title: "Rasm", supportedContentTypes: [.image])
+    var image: IntentFile
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let read = await ImageReader.read(image.data)
+        guard !read.text.isEmpty else {
+            return .result(dialog: "Rasmda matn topilmadi.")
+        }
+        let summary = FinanceEngine.processScreenshotText(read.text, ctx: DataStore.context)
+        return .result(dialog: "\(summary)")
+    }
+}
+
 struct LogBankSMSIntent: AppIntent {
     static let title: LocalizedStringResource = "Bank SMS'ini yozish"
     static let description = IntentDescription("Uzcard yoki HUMO SMS matnidan operatsiyani va karta balansini MyFin'ga yozadi.")
@@ -301,6 +333,10 @@ struct MyFinShortcuts: AppShortcutsProvider {
                     phrases: ["New transaction in \(.applicationName)",
                               "Open \(.applicationName) new transaction"],
                     shortTitle: "Yangi operatsiya", systemImageName: "square.and.pencil")
+        AppShortcut(intent: ScanReceiptIntent(),
+                    phrases: ["Scan receipt in \(.applicationName)",
+                              "\(.applicationName) receipt"],
+                    shortTitle: "Chek skanerlash", systemImageName: "qrcode.viewfinder")
         AppShortcut(intent: LogBankSMSIntent(),
                     phrases: ["\(.applicationName) bank SMS"],
                     shortTitle: "Bank SMS", systemImageName: "message.fill")

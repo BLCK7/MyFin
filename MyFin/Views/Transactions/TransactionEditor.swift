@@ -6,6 +6,7 @@ struct TransactionEditor: View {
     var existing: FinTransaction? = nil
     var presetKind: TxKind = .expense
     var presetAccountID: UUID? = nil
+    var prefill: TxPrefill? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -90,11 +91,17 @@ struct TransactionEditor: View {
                     DatePicker("Sana", selection: $date)
                 }
 
-                if let existing, existing.source != .manual {
+                if let src = existing?.source ?? prefill?.source, src != .manual {
+                    let raw = existing?.rawText ?? prefill?.rawText ?? ""
                     Section("Manba") {
-                        Label(existing.source.title, systemImage: existing.source.icon)
-                        if !existing.rawText.isEmpty {
-                            Text(existing.rawText).font(.caption).foregroundStyle(.secondary)
+                        Label(src.title, systemImage: src.icon)
+                        if let url = Self.receiptURL(in: raw) {
+                            Link(destination: url) {
+                                Label("Elektron chekni ochish", systemImage: "doc.text.magnifyingglass")
+                            }
+                        }
+                        if !raw.isEmpty {
+                            Text(raw).font(.caption).foregroundStyle(.secondary).lineLimit(8)
                         }
                     }
                 }
@@ -163,11 +170,29 @@ struct TransactionEditor: View {
             merchant = t.merchant
             note = t.note
             date = t.date
+        } else if let p = prefill {
+            kind = p.kind
+            accountID = p.accountID ?? presetAccountID ?? FinanceEngine.defaultAutomationAccount(context)?.id
+            if let a = p.amount {
+                let target = accounts.first { $0.id == accountID }?.currency ?? p.currency
+                let value = RateStore.shared.convert(a, from: p.currency, to: target)
+                amountText = Money.number(value, decimals: Money.decimals(target)).replacingOccurrences(of: " ", with: "")
+            }
+            category = p.category.isEmpty ? (p.kind == .income ? "Boshqa kirim" : "Boshqa xarajat") : p.category
+            merchant = p.merchant
+            note = p.note
+            date = p.date
         } else {
             kind = presetKind
             accountID = presetAccountID ?? FinanceEngine.defaultAutomationAccount(context)?.id
             category = presetKind == .income ? "Boshqa kirim" : "Boshqa xarajat"
         }
+    }
+
+    static func receiptURL(in raw: String) -> URL? {
+        guard let r = raw.range(of: #"https?://\S+"#, options: .regularExpression) else { return nil }
+        let s = String(raw[r])
+        return ReceiptParser.isReceiptURL(s) ? URL(string: s) : nil
     }
 
     private func save() {
@@ -200,7 +225,8 @@ struct TransactionEditor: View {
             FinanceEngine.addTransaction(kind: kind, amount: amount, currency: currency, accountID: accountID,
                                          toAccountID: kind == .transfer ? toAccountID : nil, toAmount: toAmount,
                                          category: cat, merchant: kind == .transfer ? "" : merchant, note: note,
-                                         date: date, ctx: context)
+                                         date: date, source: prefill?.source ?? .manual,
+                                         rawText: prefill?.rawText ?? "", ctx: context)
         }
         Haptics.success()
         dismiss()

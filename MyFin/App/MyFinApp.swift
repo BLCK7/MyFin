@@ -110,6 +110,9 @@ struct MainTabs: View {
     @State private var addKind: TxKind?
     @State private var openTx: FinTransaction?
     @State private var showVault = false
+    @State private var capture: CaptureMode?
+    @State private var pendingPrefill: TxPrefill?
+    @State private var prefillTx: TxPrefill?
 
     var body: some View {
         TabView(selection: $tab) {
@@ -131,14 +134,35 @@ struct MainTabs: View {
         }
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
-            Button {
-                Haptics.soft()
-                addKind = .expense
-            } label: {
-                Label("Operatsiya qo'shish", systemImage: "plus.circle.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .symbolEffect(.bounce, value: addKind)
-                    .frame(maxWidth: .infinity)
+            HStack(spacing: 0) {
+                Button {
+                    Haptics.soft()
+                    addKind = .expense
+                } label: {
+                    Label("Operatsiya qo'shish", systemImage: "plus.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .symbolEffect(.bounce, value: addKind)
+                        .frame(maxWidth: .infinity)
+                }
+                Divider().frame(height: 18)
+                Button {
+                    Haptics.soft()
+                    capture = .scan
+                } label: {
+                    Image(systemName: "qrcode.viewfinder")
+                        .font(.body.weight(.semibold))
+                        .frame(width: 44)
+                }
+                .accessibilityLabel("Chekni skanerlash")
+                Button {
+                    Haptics.soft()
+                    capture = .photo
+                } label: {
+                    Image(systemName: "text.viewfinder")
+                        .font(.body.weight(.semibold))
+                        .frame(width: 44)
+                }
+                .accessibilityLabel("Skrinshotdan qo'shish")
             }
         }
         .sheet(item: $addKind) { kind in
@@ -149,6 +173,22 @@ struct MainTabs: View {
         }
         .sheet(isPresented: $showVault) {
             NavigationStack { VaultView() }
+        }
+        .sheet(item: $capture, onDismiss: {
+            if let p = pendingPrefill {
+                pendingPrefill = nil
+                prefillTx = p
+            }
+        }) { mode in
+            CaptureSheet(mode: mode) { pendingPrefill = $0 }
+        }
+        .sheet(item: $prefillTx) { p in
+            TransactionEditor(prefill: p)
+        }
+        .onChange(of: router.capture, initial: true) { _, m in
+            guard let m else { return }
+            router.capture = nil
+            capture = m
         }
         .onChange(of: router.addKind, initial: true) { _, k in
             guard let k else { return }

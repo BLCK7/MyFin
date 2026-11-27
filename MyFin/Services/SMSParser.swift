@@ -14,20 +14,21 @@ enum SMSParser {
     static let incomeKeys = [
         "popolnen", "zachislen", "postuplen", "poluchen", "vozvrat", "kirim", "tushdi", "tushum",
         "to'ldir", "toldir", "to‘ldir", "toʻldir", "to’ldir", "hisobga o", "kartaga", "na kartu",
-        "credit", "refund", "qaytarildi", "qaytarish",
+        "credit", "refund", "qaytarildi", "qaytarish", "qabul qil", "received", "keldi", "tushirildi",
         "пополн", "зачисл", "поступл", "получен", "возврат"
     ]
 
     static let expenseKeys = [
         "pokupka", "oplata", "spisan", "snyat", "debit", "xarid", "to'lov", "tolov", "to‘lov", "toʻlov",
         "to’lov", "yechib", "yechildi", "kartadan", "perevod s", "perevod c", "o'tkazma", "otkazma",
-        "o‘tkazma", "oʻtkazma", "purchase", "payment", "withdraw",
+        "o‘tkazma", "oʻtkazma", "purchase", "payment", "withdraw", "to'landi", "tolandi", "to‘landi", "toʻlandi",
+        "chiqim", "spent", "debited", "sotib", "yechilgan", "naqdlash",
         "покупк", "оплат", "списан", "снят", "перевод с"
     ]
 
     static let balanceKeys = [
         "balans", "balance", "ostatok", "qoldiq", "dostupno", "mavjud", "bal:", "ost:",
-        "баланс", "остаток", "доступно"
+        "баланс", "остаток", "доступно", "available", "qolgan"
     ]
 
     static let noiseWords = [

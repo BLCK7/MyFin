@@ -334,7 +334,8 @@ enum FinanceEngine {
         return txs.prefix(50).contains { $0.date >= since && !$0.rawText.isEmpty && $0.rawText == text }
     }
 
-    static let automationSources: Set<String> = [TxSource.sms.rawValue, TxSource.notification.rawValue, TxSource.applePay.rawValue]
+    static let automationSources: Set<String> = [TxSource.sms.rawValue, TxSource.notification.rawValue,
+                                                 TxSource.applePay.rawValue, TxSource.screenshot.rawValue]
 
     static func findCrossSourceDuplicate(amount: Double, kind: TxKind, accountID: UUID, source: TxSource,
                                          ctx: ModelContext) -> FinTransaction? {
@@ -348,6 +349,45 @@ enum FinanceEngine {
     }
 
     static func processSMS(_ text: String, source: TxSource = .sms, ctx: ModelContext) -> String {
+        let result = processCore(text, source: source, hint: "", ctx: ctx)
+        AutomationLog.add(source: source.title, app: "", input: text, result: result)
+        return result
+    }
+
+    static func processNotification(title: String, body: String, app: String, ctx: ModelContext) -> String {
+        let bodyTrim = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let combined = [title, bodyTrim].filter { !$0.isEmpty }.joined(separator: "\n")
+        let hint = app + " " + title
+        let result: String
+        if SMSParser.parse(bodyTrim)?.amount != nil {
+            result = processCore(bodyTrim, source: .notification, hint: hint, ctx: ctx)
+        } else {
+            result = processCore(combined, source: .notification, hint: hint, ctx: ctx)
+        }
+        AutomationLog.add(source: TxSource.notification.title, app: app, input: combined, result: result)
+        return result
+    }
+
+    static func processScreenshotText(_ text: String, ctx: ModelContext) -> String {
+        let result = processCore(text, source: .screenshot, hint: text, ctx: ctx)
+        AutomationLog.add(source: TxSource.screenshot.title, app: "", input: text, result: result)
+        return result
+    }
+
+    static let knownBanks: [(key: String, name: String)] = [
+        ("tbc", "TBC Bank"), ("uzum", "Uzum Bank"), ("anor", "Anorbank"), ("payme", "Payme"), ("paynet", "Paynet"),
+        ("kapital", "Kapitalbank"), ("hamkor", "Hamkorbank"), ("ipak", "Ipak Yo'li"), ("agrobank", "Agrobank"),
+        ("xalq", "Xalq banki"), ("nbu", "NBU"), ("asaka", "Asakabank"), ("ipoteka", "Ipoteka bank"),
+        ("trast", "Trastbank"), ("davr", "Davr bank"), ("infin", "InfinBANK"), ("orient", "Orient Finans"),
+        ("aloqa", "Aloqabank"), ("turon", "Turonbank"), ("click", "Click"), ("octo", "Octobank"), ("smart", "Smartbank")
+    ]
+
+    static func knownBank(in text: String) -> (key: String, name: String)? {
+        let low = text.lowercased()
+        return knownBanks.first { low.contains($0.key) }
+    }
+
+    private static func processCore(_ text: String, source: TxSource, hint: String, ctx: ModelContext) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let p = SMSParser.parse(trimmed) else {
             return "Matnda summa topilmadi, hech narsa yozilmadi."
@@ -356,20 +396,30 @@ enum FinanceEngine {
             return "Bu xabar allaqachon yozilgan."
         }
 
+        let all = accounts(ctx).filter { !$0.isArchived }
+        let bank = knownBank(in: hint) ?? knownBank(in: trimmed)
+        let bankAccount: Account? = bank.flatMap { b in
+            all.first { $0.bank.lowercased().contains(b.key) || $0.name.lowercased().contains(b.key) }
+        }
+
         var account: Account? = nil
         var created = false
         if let last4 = p.last4 {
-            account = accounts(ctx).first { $0.cardLast4 == last4 }
+            account = all.first { $0.cardLast4 == last4 }
+            if account == nil, let ba = bankAccount, ba.cardLast4.isEmpty {
+                ba.cardLast4 = last4
+                account = ba
+            }
             if account == nil {
-                let a = Account(name: "Karta", kind: .card, cardLast4: last4, currency: p.balanceCurrency ?? p.currency,
-                                balance: 0, colorHex: Palette.swatches.randomElement() ?? "#4F7CFF",
-                                sortOrder: accounts(ctx).count)
+                let a = Account(name: bank?.name ?? "Karta", kind: .card, bank: bank?.name ?? "", cardLast4: last4,
+                                currency: p.balanceCurrency ?? p.currency, balance: 0,
+                                colorHex: Palette.swatches.randomElement() ?? "#4F7CFF", sortOrder: all.count)
                 ctx.insert(a)
                 account = a
                 created = true
             }
         }
-        if account == nil { account = defaultAutomationAccount(ctx) }
+        if account == nil { account = bankAccount ?? defaultAutomationAccount(ctx) }
         guard let acc = account else {
             return "Hisob topilmadi. Avval MyFin'da karta qo'shing."
         }
@@ -414,17 +464,14 @@ enum FinanceEngine {
         return lines.joined(separator: "\n")
     }
 
-    static func processNotification(title: String, body: String, app: String, ctx: ModelContext) -> String {
-        let bodyTrim = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        if SMSParser.parse(bodyTrim) != nil {
-            return processSMS(bodyTrim, source: .notification, ctx: ctx)
-        }
-        let combined = [title, bodyTrim].filter { !$0.isEmpty }.joined(separator: "\n")
-        return processSMS(combined, source: .notification, ctx: ctx)
+    static func processApplePay(amountText: String, merchant: String, card: String, ctx: ModelContext) -> String {
+        let result = applePayCore(amountText: amountText, merchant: merchant, card: card, ctx: ctx)
+        AutomationLog.add(source: TxSource.applePay.title, app: card, input: "\(amountText) · \(merchant)", result: result)
+        return result
     }
 
-    static func processApplePay(amountText: String, merchant: String, card: String, ctx: ModelContext) -> String {
-        guard let amount = SMSParser.parseNumber(amountText.filter { "0123456789.,  ".contains($0) }), amount > 0 else {
+    private static func applePayCore(amountText: String, merchant: String, card: String, ctx: ModelContext) -> String {
+        guard let amount = SMSParser.parseNumber(amountText.filter { "0123456789., \u{00A0}\u{202F}".contains($0) }), amount > 0 else {
             return "Summa noto'g'ri: \(amountText)"
         }
         let currency: String = {
@@ -448,6 +495,9 @@ enum FinanceEngine {
                 let b = a.bank.lowercased()
                 return (!n.isEmpty && lowerCard.contains(n)) || (!b.isEmpty && lowerCard.contains(b))
             }
+        }
+        if match == nil, let bank = knownBank(in: card) {
+            match = all.first { $0.bank.lowercased().contains(bank.key) || $0.name.lowercased().contains(bank.key) }
         }
         if match == nil { match = defaultAutomationAccount(ctx) }
         guard let acc = match else { return "Hisob topilmadi." }
