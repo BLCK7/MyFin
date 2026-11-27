@@ -3,7 +3,7 @@ import SwiftUI
 
 struct SnapshotEntry: TimelineEntry {
     let date: Date
-    let snapshot: WidgetSnapshot
+    let snapshot: WidgetSnapshot?
 }
 
 struct SnapshotProvider: TimelineProvider {
@@ -16,7 +16,7 @@ struct SnapshotProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<SnapshotEntry>) -> Void) {
-        let entry = SnapshotEntry(date: Date(), snapshot: WidgetSnapshot.load() ?? .placeholder)
+        let entry = SnapshotEntry(date: Date(), snapshot: WidgetSnapshot.load())
         let next = Calendar.current.date(byAdding: .minute, value: 30, to: Date()) ?? Date().addingTimeInterval(1800)
         completion(Timeline(entries: [entry], policy: .after(next)))
     }
@@ -49,9 +49,25 @@ struct BalanceWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: SnapshotEntry
 
-    private var s: WidgetSnapshot { entry.snapshot }
+    private var s: WidgetSnapshot { entry.snapshot ?? .placeholder }
 
     var body: some View {
+        if entry.snapshot == nil {
+            VStack(alignment: .leading, spacing: 6) {
+                BrandRow()
+                Spacer(minLength: 0)
+                Text("MyFin'ni bir marta oching").font(.caption.weight(.semibold)).foregroundStyle(.white)
+                Text("Vidjet ma'lumotlari ilova ochilganda yangilanadi.").font(.caption2).foregroundStyle(.white.opacity(0.7))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .widgetURL(URL(string: "myfin://open"))
+        } else {
+            content
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch family {
         case .systemSmall: small
         case .systemMedium: medium

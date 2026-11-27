@@ -92,7 +92,7 @@ enum AppGroup {
     static func signedAppGroups(_ bundle: Bundle) -> [String] {
         guard let url = bundle.executableURL,
               let data = try? Data(contentsOf: url, options: .alwaysMapped) else { return [] }
-        let key = Data("com.apple.security.application-groups".utf8)
+        let key = Data(("<key>" + "com.apple.security.application-groups" + "</key>").utf8)
         guard let keyRange = data.range(of: key, options: .backwards),
               let start = data.range(of: Data("<?xml".utf8), options: .backwards,
                                      in: data.startIndex..<keyRange.lowerBound)?.lowerBound,
