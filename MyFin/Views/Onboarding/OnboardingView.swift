@@ -38,6 +38,8 @@ struct OnboardingView: View {
     @State private var showDebtForm = false
     @State private var lockEnabled = false
     @State private var notifications = true
+    @State private var showPinSetup = false
+    @AppStorage("pinSet") private var pinSet = false
 
     private let totalSteps = 6
 
@@ -75,6 +77,14 @@ struct OnboardingView: View {
         .sheet(isPresented: $showDebtForm) {
             DraftDebtForm(currency: currency) { debts.append($0) }
         }
+        .fullScreenCover(isPresented: $showPinSetup) {
+            PasscodeSetupView(mode: .create, onComplete: {
+                pinSet = true
+                showPinSetup = false
+            }, onCancel: {
+                showPinSetup = false
+            })
+        }
     }
 
     private var progressBar: some View {
@@ -108,6 +118,7 @@ struct OnboardingView: View {
                 }
                 .buttonStyle(.glassProminent)
                 .controlSize(.large)
+                .disabled(step == totalSteps - 1 && !pinSet)
             }
         }
     }
@@ -298,13 +309,41 @@ struct OnboardingView: View {
     private var security: some View {
         ScrollView {
             VStack(spacing: 22) {
-                stepHeader("lock.shield.fill", "Himoya", "Moliyaviy ma'lumotlaringizni yopiq saqlang.")
+                stepHeader("lock.shield.fill", "Himoya", "Ilovaga kirish uchun PIN-kod o'rnating. Face ID bilan ham ochish mumkin.")
+                GlassCard(tint: pinSet ? Palette.income : Palette.accent) {
+                    Button {
+                        showPinSetup = true
+                    } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: pinSet ? "checkmark.shield.fill" : "lock.badge.plus")
+                                .font(.title2)
+                                .foregroundStyle(pinSet ? Palette.income : Palette.accent)
+                                .contentTransition(.symbolEffect(.replace))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(pinSet ? "PIN-kod o'rnatildi" : "PIN-kod o'rnatish")
+                                    .font(.headline)
+                                Text(pinSet ? "O'zgartirish uchun bosing" : "Majburiy · 4 yoki 6 raqam")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
                 GlassCard {
                     VStack(spacing: 16) {
-                        Toggle(isOn: $lockEnabled) {
-                            Label("\(Biometrics.name) bilan qulflash", systemImage: "faceid")
+                        Toggle(isOn: Binding(get: { lockEnabled }, set: { v in
+                            if v {
+                                Task { lockEnabled = await Biometrics.authenticateBiometric(reason: "Face ID bilan kirishni yoqish") }
+                            } else {
+                                lockEnabled = false
+                            }
+                        })) {
+                            Label("\(Biometrics.name) bilan ochish", systemImage: Biometrics.icon)
                         }
-                        .disabled(!Biometrics.available)
+                        .disabled(!Biometrics.available || !pinSet)
                         Divider()
                         Toggle(isOn: $notifications) {
                             Label("Eslatmalar (qarz, to'lov, byudjet)", systemImage: "bell.badge.fill")
@@ -313,7 +352,7 @@ struct OnboardingView: View {
                 }
                 GlassCard(tint: Palette.income) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Tayyor!").font(.headline)
+                        Text("Deyarli tayyor!").font(.headline)
                         summaryLine("Naqd pul", total: (parseAmount(cashText) ?? 0), currency: "UZS")
                         if (parseAmount(cashUSDText) ?? 0) > 0 {
                             summaryLine("Naqd dollar", total: parseAmount(cashUSDText) ?? 0, currency: "USD")
@@ -370,6 +409,8 @@ struct OnboardingView: View {
         userName = name.trimmingCharacters(in: .whitespaces)
         base = currency
         faceIDEnabled = lockEnabled && Biometrics.available
+        AppLock.shared.unlock()
+        Haptics.success()
         if notifications {
             Task { _ = await Notifier.requestAuthorization() }
         }

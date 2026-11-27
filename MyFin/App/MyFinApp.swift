@@ -9,6 +9,7 @@ struct MyFinApp: App {
         WindowGroup {
             RootView()
                 .environment(RateStore.shared)
+                .environment(AppLock.shared)
                 .preferredColorScheme(colorScheme)
                 .tint(Palette.accent)
         }
@@ -26,90 +27,60 @@ struct MyFinApp: App {
 
 struct RootView: View {
     @AppStorage("onboarded") private var onboarded = false
-    @AppStorage("faceIDEnabled") private var faceIDEnabled = false
+    @AppStorage("pinSet") private var pinSet = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var context
     @Environment(RateStore.self) private var rates
-    @State private var locked = true
-    @State private var authenticating = false
+    @Environment(AppLock.self) private var lock
+    @State private var showSplash = true
 
     var body: some View {
         ZStack {
-            if onboarded {
-                MainTabs()
-            } else {
+            if !onboarded {
                 OnboardingView()
+            } else if !pinSet {
+                PasscodeSetupView(mode: .create) {
+                    withAnimation(.smooth) {
+                        pinSet = true
+                        lock.unlock()
+                    }
+                }
+            } else {
+                MainTabs()
             }
 
-            if onboarded && faceIDEnabled && locked {
-                LockView(authenticating: authenticating) { Task { await unlock() } }
-                    .transition(.opacity)
+            if onboarded && pinSet && lock.isLocked && !showSplash {
+                LockScreen()
+                    .transition(.opacity.combined(with: .scale(scale: 1.04)))
                     .zIndex(2)
             }
 
-            if onboarded && scenePhase != .active && !(faceIDEnabled && locked) {
+            if onboarded && !lock.isLocked && scenePhase != .active {
                 PrivacyCover()
                     .transition(.opacity)
                     .zIndex(3)
             }
+
+            if showSplash {
+                SplashView()
+                    .transition(.opacity.combined(with: .scale(scale: 1.08)))
+                    .zIndex(4)
+            }
         }
-        .animation(.smooth, value: locked)
+        .animation(.smooth(duration: 0.4), value: lock.isLocked)
         .animation(.smooth, value: onboarded)
         .task {
             SeedData.seedIfNeeded(context)
-            if faceIDEnabled && locked { await unlock() }
+            pinSet = PasscodeStore.isSet
+            try? await Task.sleep(for: .milliseconds(1900))
+            withAnimation(.smooth(duration: 0.5)) { showSplash = false }
             await rates.refreshIfStale()
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .background && faceIDEnabled {
-                locked = true
-            }
-            if phase == .active && faceIDEnabled && locked && !authenticating {
-                Task { await unlock() }
-            }
-        }
-    }
-
-    private func unlock() async {
-        guard !authenticating else { return }
-        authenticating = true
-        let ok = await Biometrics.authenticate(reason: "MyFin'ni ochish")
-        authenticating = false
-        if ok { locked = false }
-    }
-}
-
-struct LockView: View {
-    let authenticating: Bool
-    let unlock: () -> Void
-
-    var body: some View {
-        ZStack {
-            AppBackground()
-            VStack(spacing: 24) {
-                Spacer()
-                Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 64, weight: .semibold))
-                    .foregroundStyle(Palette.accent)
-                    .padding(28)
-                    .glassEffect(.regular, in: .circle)
-                Text("MyFin qulflangan")
-                    .font(.title2.bold())
-                Text("Davom etish uchun \(Biometrics.name) bilan tasdiqlang")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button(action: unlock) {
-                    Label(authenticating ? "Tekshirilmoqda…" : "Ochish", systemImage: "faceid")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                }
-                .buttonStyle(.glassProminent)
-                .controlSize(.large)
-                .disabled(authenticating)
-                .padding(.horizontal, 32)
-                .padding(.bottom, 40)
+            switch phase {
+            case .background: lock.didEnterBackground()
+            case .active: lock.didBecomeActive()
+            default: break
             }
         }
     }
@@ -153,10 +124,12 @@ struct MainTabs: View {
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
             Button {
+                Haptics.soft()
                 showAdd = true
             } label: {
                 Label("Operatsiya qo'shish", systemImage: "plus.circle.fill")
                     .font(.subheadline.weight(.semibold))
+                    .symbolEffect(.bounce, value: showAdd)
                     .frame(maxWidth: .infinity)
             }
         }

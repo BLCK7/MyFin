@@ -415,6 +415,7 @@ struct AccountEditor: View {
             context.insert(a)
         }
         try? context.save()
+        Haptics.success()
         dismiss()
     }
 }

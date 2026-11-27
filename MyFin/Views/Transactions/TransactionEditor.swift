@@ -194,6 +194,7 @@ struct TransactionEditor: View {
                                          category: cat, merchant: kind == .transfer ? "" : merchant, note: note,
                                          date: date, ctx: context)
         }
+        Haptics.success()
         dismiss()
     }
 }

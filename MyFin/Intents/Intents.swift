@@ -16,6 +16,27 @@ struct LogBankSMSIntent: AppIntent {
     }
 }
 
+struct LogBankNotificationIntent: AppIntent {
+    static let title: LocalizedStringResource = "Bank bildirishnomasini yozish"
+    static let description = IntentDescription("Bank ilovasi bildirishnomasidan (Uzum, TBC, Kapitalbank, Click, Payme…) operatsiya va balansni MyFin'ga yozadi.")
+    static let openAppWhenRun: Bool = false
+
+    @Parameter(title: "Matn")
+    var body: String
+
+    @Parameter(title: "Sarlavha", default: "")
+    var heading: String
+
+    @Parameter(title: "Ilova", default: "")
+    var app: String
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let summary = FinanceEngine.processNotification(title: heading, body: body, app: app, ctx: DataStore.context)
+        return .result(dialog: "\(summary)")
+    }
+}
+
 struct LogApplePayIntent: AppIntent {
     static let title: LocalizedStringResource = "Apple Pay xaridini yozish"
     static let description = IntentDescription("Wallet tranzaksiyasini (summa, do'kon, karta) MyFin'ga chiqim sifatida yozadi.")
@@ -90,6 +111,9 @@ struct MyFinShortcuts: AppShortcutsProvider {
         AppShortcut(intent: LogBankSMSIntent(),
                     phrases: ["\(.applicationName) bank SMS"],
                     shortTitle: "Bank SMS", systemImageName: "message.fill")
+        AppShortcut(intent: LogBankNotificationIntent(),
+                    phrases: ["\(.applicationName) bildirishnoma"],
+                    shortTitle: "Bank bildirishnomasi", systemImageName: "bell.badge.fill")
         AppShortcut(intent: LogApplePayIntent(),
                     phrases: ["\(.applicationName) Apple Pay"],
                     shortTitle: "Apple Pay", systemImageName: "creditcard.fill")

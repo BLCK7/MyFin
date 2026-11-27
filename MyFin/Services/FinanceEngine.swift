@@ -268,13 +268,26 @@ enum FinanceEngine {
         return txs.prefix(50).contains { $0.date >= since && !$0.rawText.isEmpty && $0.rawText == text }
     }
 
-    static func processSMS(_ text: String, ctx: ModelContext) -> String {
+    static let automationSources: Set<String> = [TxSource.sms.rawValue, TxSource.notification.rawValue, TxSource.applePay.rawValue]
+
+    static func findCrossSourceDuplicate(amount: Double, kind: TxKind, accountID: UUID, source: TxSource,
+                                         ctx: ModelContext) -> FinTransaction? {
+        let since = Date().addingTimeInterval(-6 * 60)
+        let txs = (try? ctx.fetch(FetchDescriptor<FinTransaction>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? []
+        return txs.prefix(40).first { t in
+            t.date >= since && t.accountID == accountID && t.kind == kind
+                && abs(t.amount - amount) < 0.01
+                && automationSources.contains(t.sourceRaw) && t.sourceRaw != source.rawValue
+        }
+    }
+
+    static func processSMS(_ text: String, source: TxSource = .sms, ctx: ModelContext) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let p = SMSParser.parse(trimmed) else {
-            return "SMS'da summa topilmadi, hech narsa yozilmadi."
+            return "Matnda summa topilmadi, hech narsa yozilmadi."
         }
         if isDuplicate(trimmed, ctx: ctx) {
-            return "Bu SMS allaqachon yozilgan."
+            return "Bu xabar allaqachon yozilgan."
         }
 
         var account: Account? = nil
@@ -298,12 +311,20 @@ enum FinanceEngine {
         var lines: [String] = []
         if let amount = p.amount, amount > 0 {
             let kind: TxKind = p.isIncome ? .income : .expense
-            let category = guessCategory(text: p.merchant + " " + trimmed, kind: kind, ctx: ctx)
-            addTransaction(kind: kind, amount: amount, currency: p.currency, accountID: acc.id,
-                           category: category, merchant: p.merchant, source: .sms, rawText: trimmed, ctx: ctx)
-            let signed = p.isIncome ? amount : -amount
-            let title = p.merchant.isEmpty ? category : p.merchant
-            lines.append("\(title): \(Money.format(signed, p.currency, signed: true))")
+            let converted = RateStore.shared.convert(amount, from: p.currency, to: acc.currency)
+            if let dup = findCrossSourceDuplicate(amount: amount, kind: kind, accountID: acc.id, source: source, ctx: ctx)
+                ?? findCrossSourceDuplicate(amount: converted, kind: kind, accountID: acc.id, source: source, ctx: ctx) {
+                if dup.merchant.isEmpty && !p.merchant.isEmpty { dup.merchant = p.merchant }
+                if dup.rawText.isEmpty { dup.rawText = trimmed }
+                lines.append("Bu operatsiya boshqa manbadan allaqachon yozilgan (\(dup.source.title)).")
+            } else {
+                let category = guessCategory(text: p.merchant + " " + trimmed, kind: kind, ctx: ctx)
+                addTransaction(kind: kind, amount: amount, currency: p.currency, accountID: acc.id,
+                               category: category, merchant: p.merchant, source: source, rawText: trimmed, ctx: ctx)
+                let signed = p.isIncome ? amount : -amount
+                let title = p.merchant.isEmpty ? category : p.merchant
+                lines.append("\(title): \(Money.format(signed, p.currency, signed: true))")
+            }
         }
         if let balance = p.balance {
             let balCur = p.balanceCurrency ?? acc.currency
@@ -315,6 +336,15 @@ enum FinanceEngine {
         if created { lines.append("Yangi karta qo'shildi (•\(acc.cardLast4)).") }
         try? ctx.save()
         return lines.joined(separator: "\n")
+    }
+
+    static func processNotification(title: String, body: String, app: String, ctx: ModelContext) -> String {
+        let bodyTrim = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        if SMSParser.parse(bodyTrim) != nil {
+            return processSMS(bodyTrim, source: .notification, ctx: ctx)
+        }
+        let combined = [title, bodyTrim].filter { !$0.isEmpty }.joined(separator: "\n")
+        return processSMS(combined, source: .notification, ctx: ctx)
     }
 
     static func processApplePay(amountText: String, merchant: String, card: String, ctx: ModelContext) -> String {
@@ -345,6 +375,11 @@ enum FinanceEngine {
         }
         if match == nil { match = defaultAutomationAccount(ctx) }
         guard let acc = match else { return "Hisob topilmadi." }
+        if let dup = findCrossSourceDuplicate(amount: amount, kind: .expense, accountID: acc.id, source: .applePay, ctx: ctx) {
+            if !merchant.isEmpty { dup.merchant = merchant }
+            try? ctx.save()
+            return "Bu xarid allaqachon yozilgan (\(dup.source.title))."
+        }
         let category = guessCategory(text: merchant, kind: .expense, ctx: ctx)
         addTransaction(kind: .expense, amount: amount, currency: currency, accountID: acc.id, category: category,
                        merchant: merchant, note: "Apple Pay", source: .applePay, ctx: ctx)

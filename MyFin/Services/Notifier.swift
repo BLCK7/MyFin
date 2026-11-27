@@ -69,7 +69,27 @@ enum Notifier {
 enum Biometrics {
     static var available: Bool {
         var error: NSError?
-        return LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: &error)
+        return LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+    }
+
+    static var icon: String {
+        let ctx = LAContext()
+        var error: NSError?
+        _ = ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+        return ctx.biometryType == .touchID ? "touchid" : "faceid"
+    }
+
+    static func authenticateBiometric(reason: String) async -> Bool {
+        let ctx = LAContext()
+        ctx.localizedFallbackTitle = "PIN-kod"
+        ctx.localizedCancelTitle = "Bekor"
+        var error: NSError?
+        guard ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else { return false }
+        do {
+            return try await ctx.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason)
+        } catch {
+            return false
+        }
     }
 
     static var name: String {

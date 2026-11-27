@@ -277,6 +277,7 @@ struct DebtEditor: View {
             created.phone = phone
             try? context.save()
         }
+        Haptics.success()
         dismiss()
     }
 }

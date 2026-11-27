@@ -12,6 +12,9 @@ struct SettingsView: View {
     @AppStorage("hideAmounts") private var hideAmounts = false
     @AppStorage("defaultSMSAccountID") private var defaultAccount = ""
     @AppStorage("onboarded") private var onboarded = true
+    @AppStorage("autoLockSeconds") private var autoLock = 0
+    @Environment(AppLock.self) private var lock
+    @State private var changePin = false
     @State private var exportURL: URL?
     @State private var csvURL: URL?
     @State private var importing = false
@@ -42,17 +45,35 @@ struct SettingsView: View {
             }
 
             Section {
-                Toggle(isOn: Binding(get: { faceIDEnabled }, set: { newValue in toggleLock(newValue) })) {
-                    Label("\(Biometrics.name) bilan qulflash", systemImage: "faceid")
+                Button {
+                    changePin = true
+                } label: {
+                    Label("PIN-kodni o'zgartirish", systemImage: "lock.rotation")
+                }
+                Toggle(isOn: Binding(get: { faceIDEnabled }, set: { newValue in toggleBiometric(newValue) })) {
+                    Label("\(Biometrics.name) bilan ochish", systemImage: Biometrics.icon)
                 }
                 .disabled(!Biometrics.available)
+                Picker(selection: $autoLock) {
+                    Text("Darhol").tag(0)
+                    Text("30 soniya").tag(30)
+                    Text("1 daqiqa").tag(60)
+                    Text("5 daqiqa").tag(300)
+                } label: {
+                    Label("Avtomatik qulflash", systemImage: "timer")
+                }
                 Toggle(isOn: $hideAmounts) {
                     Label("Summalarni yashirish", systemImage: "eye.slash")
+                }
+                Button {
+                    lock.lock()
+                } label: {
+                    Label("Hozir qulflash", systemImage: "lock.fill")
                 }
             } header: {
                 Text("Xavfsizlik va maxfiylik")
             } footer: {
-                Text("Ma'lumotlar faqat shu iPhone'da saqlanadi va hech qayerga yuborilmaydi. Ilova fonga o'tganda ekran yopiladi.")
+                Text("PIN-kod PBKDF2 (SHA-256, 120 000 iteratsiya) bilan xeshlanib Keychain'da saqlanadi. 5 ta xato urinishdan keyin kirish vaqtincha bloklanadi. Ma'lumotlar faqat shu iPhone'da.")
             }
 
             Section {
@@ -131,6 +152,14 @@ struct SettingsView: View {
         }
         .screenBackground()
         .navigationTitle("Sozlamalar")
+        .fullScreenCover(isPresented: $changePin) {
+            PasscodeSetupView(mode: .change, onComplete: {
+                changePin = false
+                message = "PIN-kod yangilandi."
+            }, onCancel: {
+                changePin = false
+            })
+        }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
             if case .success(let url) = result { confirmImport = url }
         }
@@ -152,6 +181,8 @@ struct SettingsView: View {
             Button("Ha, o'chirish", role: .destructive) {
                 BackupManager.wipe(context)
                 SeedData.seedIfNeeded(context)
+                PasscodeStore.clear()
+                faceIDEnabled = false
                 onboarded = false
             }
         } message: {
@@ -164,9 +195,9 @@ struct SettingsView: View {
         }
     }
 
-    private func toggleLock(_ enable: Bool) {
+    private func toggleBiometric(_ enable: Bool) {
         Task {
-            let ok = await Biometrics.authenticate(reason: enable ? "Qulfni yoqish" : "Qulfni o'chirish")
+            let ok = await Biometrics.authenticateBiometric(reason: enable ? "\(Biometrics.name) bilan kirishni yoqish" : "\(Biometrics.name) bilan kirishni o'chirish")
             if ok { faceIDEnabled = enable }
         }
     }
@@ -186,17 +217,24 @@ struct AutomationView: View {
                 GlassCard(tint: Palette.accent) {
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Qanday ishlaydi", systemImage: "bolt.fill").font(.headline)
-                        Text("Bank kartangizdan SMS kelishi bilan iOS “Shortcuts” ilovasi uning matnini MyFin'ga uzatadi. MyFin summani, karta raqamining oxirgi 4 raqamini va SMS'dagi qoldiqni ajratib, operatsiyani yozadi va karta balansini yangilaydi. Ilovani ochish shart emas.")
+                        Text("Bankdan SMS yoki bank ilovasidan bildirishnoma kelishi bilan iOS “Shortcuts” uning matnini MyFin'ga uzatadi. MyFin summani, karta raqamining oxirgi 4 raqamini, do'konni va qoldiqni ajratib, operatsiyani yozadi va karta balansini yangilaydi. Ilovani ochish shart emas.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                step(1, "Kartani qo'shing", "Hisoblar bo'limida kartani oxirgi 4 raqami bilan qo'shing. Yangi raqamli karta SMS'i kelsa, MyFin uni o'zi yaratadi.")
-                step(2, "Shortcuts → Avtomatizatsiya", "Shortcuts ilovasi → “Avtomatizatsiya” → “+” → “Xabar” (Message).")
-                step(3, "Jo'natuvchini tanlang", "“Jo'natuvchi” maydoniga bankingiz SMS raqamini kiriting: UZCARD, HUMO, 13131 yoki bankning qisqa raqami. “Darhol ishga tushirish” (Run Immediately) ni tanlang.")
-                step(4, "MyFin amalini qo'shing", "Yangi qisqa buyruq → amal qidiruvida “MyFin” → “Bank SMS'ini yozish”. “SMS matni” maydoniga “Qisqa buyruq kiritmasi” (Shortcut Input) → “Kontent” ni qo'ying.")
-                step(5, "Apple Pay (ixtiyoriy)", "Yana bir avtomatizatsiya: “Tranzaksiya” (Transaction) → kartangiz → “Darhol”. Amal: MyFin → “Apple Pay xaridini yozish”; Summa, Do'kon va Karta maydonlariga kiritmaning tegishli qiymatlarini bering.")
+                Text("1-usul · Bank SMS").font(.headline).padding(.top, 4)
+                step(1, "Kartani qo'shing", "Hisoblar bo'limida kartani oxirgi 4 raqami bilan qo'shing. Notanish raqamli kartadan SMS kelsa, MyFin uni o'zi yaratadi.")
+                step(2, "Shortcuts → Avtomatizatsiya → Xabar", "Shortcuts → “Avtomatizatsiya” → “+” → “Xabar” (Message). Jo'natuvchi: UZCARD, HUMO, 13131 yoki bankingiz raqami. “Darhol ishga tushirish”ni tanlang.")
+                step(3, "MyFin amali", "Amal: MyFin → “Bank SMS'ini yozish”. “SMS matni” maydoniga “Qisqa buyruq kiritmasi → Kontent”ni bering.")
+
+                Text("2-usul · Bank ilovasi bildirishnomasi (iOS 27+)").font(.headline).padding(.top, 4)
+                step(1, "Bildirishnoma triggeri", "Shortcuts → “Avtomatizatsiya” → “+” → “Bildirishnoma” (When I get a notification) → ilovani tanlang: Uzum Bank, TBC, Kapitalbank, Anorbank, Click, Payme… Ixtiyoriy: matnda “so'm” yoki “UZS” bo'lsa.")
+                step(2, "MyFin amali", "Amal: MyFin → “Bank bildirishnomasini yozish”. Matn = bildirishnoma matni (Body), Sarlavha = sarlavha (Title). “Darhol ishga tushirish”ni tanlang.")
+                step(3, "Ikki marta yozilmaydi", "Bitta operatsiya SMS'dan ham, bildirishnomadan ham kelsa, MyFin 6 daqiqa ichidagi bir xil summani bitta deb hisoblaydi va faqat balansni yangilaydi.")
+
+                Text("3-usul · Apple Pay").font(.headline).padding(.top, 4)
+                step(1, "Tranzaksiya triggeri", "“Avtomatizatsiya” → “+” → “Tranzaksiya” (Transaction) → kartangiz → “Darhol”. Amal: MyFin → “Apple Pay xaridini yozish”; Summa, Do'kon, Karta maydonlariga kiritma qiymatlarini bering.")
 
                 Button {
                     if let url = URL(string: "shortcuts://") { openURL(url) }
@@ -208,7 +246,7 @@ struct AutomationView: View {
 
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("SMS'ni sinab ko'rish").font(.headline)
+                        Text("SMS / bildirishnomani sinash").font(.headline)
                         Text("Bankdan kelgan haqiqiy SMS matnini shu yerga qo'ying va MyFin uni qanday tushunishini tekshiring.")
                             .font(.caption).foregroundStyle(.secondary)
                         TextEditor(text: $sample)

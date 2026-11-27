@@ -36,17 +36,24 @@ struct DashboardView: View {
             ScrollView {
                 VStack(spacing: 18) {
                     NetWorthCard(summary: summary, base: base)
+                        .appearAnimation(0)
                     MonthCard(summary: summary, base: base)
+                        .appearAnimation(1)
                     AccountsStrip(accounts: activeAccounts) { tab = .accounts }
+                        .appearAnimation(2)
                     if !slices.isEmpty {
                         SpendingCard(slices: slices, base: base, total: summary.monthExpense)
+                            .appearAnimation(3)
                     }
                     if !budgets.isEmpty {
                         BudgetPreview(budgets: budgets, transactions: transactions, categories: categories, base: base)
+                            .appearAnimation(4)
                     }
                     UpcomingDebtsCard(debts: debts) { tab = .debts }
+                        .appearAnimation(5)
                     RecentCard(transactions: Array(transactions.prefix(6)), accounts: accounts, categories: categories,
                                onSelect: { editing = $0 }, onAll: { tab = .transactions })
+                        .appearAnimation(6)
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 32)
@@ -75,6 +82,7 @@ struct DashboardView: View {
 private struct NetWorthCard: View {
     let summary: FinanceSummary
     let base: String
+    @State private var shown: Double = 0
 
     var body: some View {
         GlassCard(padding: 20, radius: 30, tint: Palette.accent) {
@@ -88,7 +96,13 @@ private struct NetWorthCard: View {
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
-                AmountText(value: summary.netWorth, currency: base, font: .system(size: 38, weight: .bold, design: .rounded))
+                AmountText(value: shown, currency: base, font: .system(size: 38, weight: .bold, design: .rounded))
+                    .onAppear {
+                        withAnimation(.smooth(duration: 1.1)) { shown = summary.netWorth }
+                    }
+                    .onChange(of: summary.netWorth) { _, v in
+                        withAnimation(.snappy) { shown = v }
+                    }
                 Divider().opacity(0.4)
                 HStack(spacing: 12) {
                     StatPill(title: "Hisoblarda", value: summary.totalAssets, currency: base, color: Palette.accent, icon: "wallet.pass.fill")
@@ -151,6 +165,12 @@ private struct AccountsStrip: View {
                             } label: {
                                 AccountCardView(account: a)
                                     .frame(width: 250, height: 150)
+                                    .scrollTransition(axis: .horizontal) { content, phase in
+                                        content
+                                            .scaleEffect(phase.isIdentity ? 1 : 0.9)
+                                            .rotation3DEffect(.degrees(phase.value * -12), axis: (x: 0, y: 1, z: 0))
+                                            .opacity(phase.isIdentity ? 1 : 0.75)
+                                    }
                             }
                             .buttonStyle(.plain)
                         }
