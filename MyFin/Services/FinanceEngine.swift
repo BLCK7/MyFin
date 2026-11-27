@@ -499,7 +499,14 @@ enum FinanceEngine {
                 lines.append("\(title): \(Money.format(signed, p.currency, signed: true))")
             }
         }
-        if let balance = p.balance {
+        let bankMatches = bank.map { b in
+            all.filter { $0.bank.lowercased().contains(b.key) || $0.name.lowercased().contains(b.key) }.count
+        } ?? 0
+        let balanceOwnerKnown = p.last4 != nil || bankMatches == 1
+        if p.balance != nil && !balanceOwnerKnown {
+            lines.append("Xabarda karta raqami yo'q — qoldiq qaysi kartaga tegishli ekani aniq emas, balans o'zgartirilmadi.")
+        }
+        if let balance = p.balance, balanceOwnerKnown {
             let balCur = p.balanceCurrency ?? acc.currency
             let bankBalance = RateStore.shared.convert(balance, from: balCur, to: acc.currency)
             let diff = bankBalance - acc.balance
