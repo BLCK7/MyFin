@@ -331,7 +331,7 @@ enum FinanceEngine {
     static func isDuplicate(_ text: String, ctx: ModelContext) -> Bool {
         let since = Date().addingTimeInterval(-15 * 60)
         let txs = (try? ctx.fetch(FetchDescriptor<FinTransaction>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? []
-        return txs.prefix(50).contains { $0.date >= since && !$0.rawText.isEmpty && $0.rawText == text }
+        return txs.prefix(50).contains { $0.date >= since && !$0.rawText.isEmpty && $0.rawText.contains(text) }
     }
 
     static let automationSources: Set<String> = [TxSource.sms.rawValue, TxSource.notification.rawValue,
@@ -359,10 +359,11 @@ enum FinanceEngine {
         let combined = [title, bodyTrim].filter { !$0.isEmpty }.joined(separator: "\n")
         let hint = app + " " + title
         let result: String
+        let tag = app.trimmingCharacters(in: .whitespaces)
         if SMSParser.parse(bodyTrim)?.amount != nil {
-            result = processCore(bodyTrim, source: .notification, hint: hint, ctx: ctx)
+            result = processCore(bodyTrim, source: .notification, hint: hint, tag: tag, ctx: ctx)
         } else {
-            result = processCore(combined, source: .notification, hint: hint, ctx: ctx)
+            result = processCore(combined, source: .notification, hint: hint, tag: tag, ctx: ctx)
         }
         AutomationLog.add(source: TxSource.notification.title, app: app, input: combined, result: result)
         return result
@@ -382,6 +383,14 @@ enum FinanceEngine {
         ("aloqa", "Aloqabank"), ("turon", "Turonbank"), ("click", "Click"), ("octo", "Octobank"), ("smart", "Smartbank")
     ]
 
+    /// Payment apps, not card issuers: their notifications repeat a payment the bank also reports.
+    static let aggregatorKeys: Set<String> = ["payme", "paynet", "click"]
+
+    static func appTag(of raw: String) -> String {
+        guard raw.hasPrefix("["), let end = raw.firstIndex(of: "]") else { return "" }
+        return String(raw[raw.index(after: raw.startIndex)..<end]).lowercased()
+    }
+
     static func knownBank(in text: String) -> (key: String, name: String)? {
         let low = text.lowercased()
         return knownBanks.first { low.contains($0.key) }
@@ -389,20 +398,27 @@ enum FinanceEngine {
 
     static let pairSeparator = "\n— — —\n"
 
-    /// One payment often produces two bank notifications (e.g. TBC: “Pul yechish, karta *7758 … Balans …” and
-    /// “Siz "UzMobile" uchun … to'lov qildingiz”). They are merged into one transaction when they arrive within
-    /// 3 minutes with the same amount, unless both name a card (then they are two separate payments).
-    static func findCompanion(amount: Double, currency: String, kind: TxKind, hasCard: Bool, source: TxSource,
-                              bankKey: String?, ctx: ModelContext) -> FinTransaction? {
+    /// One payment often produces two notifications (TBC: “Pul yechish, karta *7758 … Balans …” and
+    /// “Siz "UzMobile" uchun … to'lov qildingiz”; or Payme + the bank). They are merged into one transaction when
+    /// they arrive within 3 minutes with the same amount. Two messages from the same app that both name a card,
+    /// or both name none, are separate payments.
+    static func findCompanion(amount: Double, currency: String, kind: TxKind, last4: String?, source: TxSource,
+                              tag: String, bankKey: String?, ctx: ModelContext) -> FinTransaction? {
         let since = Date().addingTimeInterval(-3 * 60)
         let txs = (try? ctx.fetch(FetchDescriptor<FinTransaction>(sortBy: [SortDescriptor(\.date, order: .reverse)]))) ?? []
+        let myTag = tag.lowercased()
         return txs.prefix(30).first { t in
             guard t.date >= since, t.kind == kind, automationSources.contains(t.sourceRaw),
                   !t.rawText.contains(pairSeparator), t.currency == currency, abs(t.amount - amount) < 0.01 else { return false }
-            let tHasCard = SMSParser.last4(in: t.rawText) != nil
-            if hasCard && tHasCard { return false }
-            if !hasCard && !tHasCard && t.sourceRaw == source.rawValue { return false }
-            if let key = bankKey, let a = account(t.accountID, in: ctx) {
+            let tLast4 = SMSParser.last4(in: t.rawText)
+            let tTag = appTag(of: t.rawText)
+            let sameApp = t.sourceRaw == source.rawValue && tTag == myTag
+            if let last4, let tLast4 {
+                if sameApp || last4 != tLast4 { return false }
+            }
+            if last4 == nil && tLast4 == nil && sameApp { return false }
+            let aggregator = aggregatorKeys.contains { tTag.contains($0) || myTag.contains($0) }
+            if !aggregator, let key = bankKey, !aggregatorKeys.contains(key), let a = account(t.accountID, in: ctx) {
                 let label = (a.bank + " " + a.name).lowercased()
                 if !label.contains(key), let other = knownBank(in: label), other.key != key { return false }
             }
@@ -429,17 +445,20 @@ enum FinanceEngine {
         WidgetSync.schedule(ctx)
     }
 
-    private static func processCore(_ text: String, source: TxSource, hint: String, ctx: ModelContext) -> String {
+    private static func processCore(_ text: String, source: TxSource, hint: String, tag: String = "",
+                                    ctx: ModelContext) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let p = SMSParser.parse(trimmed) else {
             return "Matnda summa topilmadi, hech narsa yozilmadi."
         }
-        if isDuplicate(trimmed, ctx: ctx) {
+        let stored = tag.isEmpty ? trimmed : "[\(tag)] \(trimmed)"
+        if isDuplicate(stored, ctx: ctx) {
             return "Bu xabar allaqachon yozilgan."
         }
 
         let all = accounts(ctx).filter { !$0.isArchived }
-        let bank = knownBank(in: hint) ?? knownBank(in: trimmed)
+        let anyBank = knownBank(in: hint) ?? knownBank(in: trimmed)
+        let bank = anyBank.flatMap { aggregatorKeys.contains($0.key) ? nil : $0 }
         let bankAccount: Account? = bank.flatMap { b in
             all.first { $0.bank.lowercased().contains(b.key) || $0.name.lowercased().contains(b.key) }
         }
@@ -471,15 +490,15 @@ enum FinanceEngine {
             let kind: TxKind = p.isIncome ? .income : .expense
             let converted = RateStore.shared.convert(amount, from: p.currency, to: acc.currency)
             let quoted = SMSParser.quoted(in: trimmed)
-            if let comp = findCompanion(amount: amount, currency: p.currency, kind: kind, hasCard: p.last4 != nil,
-                                        source: source, bankKey: bank?.key, ctx: ctx) {
-                merge(comp, text: trimmed, cardAccount: p.last4 != nil ? acc : nil,
+            if let comp = findCompanion(amount: amount, currency: p.currency, kind: kind, last4: p.last4,
+                                        source: source, tag: tag, bankKey: anyBank?.key, ctx: ctx) {
+                merge(comp, text: stored, cardAccount: p.last4 != nil ? acc : nil,
                       merchant: quoted ?? p.merchant, quality: quoted != nil ? 2 : (p.merchant.isEmpty ? 0 : 1), ctx: ctx)
                 lines.append("Bitta to'lov: ikkinchi bildirishnoma “\(comp.merchant.isEmpty ? comp.categoryName : comp.merchant)” operatsiyasiga qo'shildi.")
             } else if let dup = findCrossSourceDuplicate(amount: amount, kind: kind, accountID: acc.id, source: source, ctx: ctx)
                 ?? findCrossSourceDuplicate(amount: converted, kind: kind, accountID: acc.id, source: source, ctx: ctx) {
                 if dup.merchant.isEmpty && !p.merchant.isEmpty { dup.merchant = p.merchant }
-                if dup.rawText.isEmpty { dup.rawText = trimmed }
+                if dup.rawText.isEmpty { dup.rawText = stored }
                 lines.append("Bu operatsiya boshqa manbadan allaqachon yozilgan (\(dup.source.title)).")
             } else {
                 var merchant = p.merchant
@@ -490,7 +509,7 @@ enum FinanceEngine {
                 }
                 let category = guessCategory(text: merchant + " " + (phone ?? "") + " " + trimmed, kind: kind, ctx: ctx)
                 let tx = addTransaction(kind: kind, amount: amount, currency: p.currency, accountID: acc.id,
-                                        category: category, merchant: merchant, source: source, rawText: trimmed, ctx: ctx)
+                                        category: category, merchant: merchant, source: source, rawText: stored, ctx: ctx)
                 tx.needsReview = true
                 try? ctx.save()
                 Notifier.postReview(tx, account: acc)
@@ -564,8 +583,8 @@ enum FinanceEngine {
         }
         if match == nil { match = defaultAutomationAccount(ctx) }
         guard let acc = match else { return "Hisob topilmadi." }
-        if let comp = findCompanion(amount: amount, currency: currency, kind: .expense, hasCard: !last4.isEmpty,
-                                    source: .applePay, bankKey: knownBank(in: card)?.key, ctx: ctx) {
+        if let comp = findCompanion(amount: amount, currency: currency, kind: .expense, last4: last4.isEmpty ? nil : last4,
+                                    source: .applePay, tag: "", bankKey: knownBank(in: card)?.key, ctx: ctx) {
             merge(comp, text: "Apple Pay: \(amountText) · \(merchant) · \(card)", cardAccount: nil,
                   merchant: merchant, quality: merchant.isEmpty ? 0 : 2, ctx: ctx)
             return "Bu xarid bank bildirishnomasidan allaqachon yozilgan, do'kon nomi qo'shildi."
