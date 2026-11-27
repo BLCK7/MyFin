@@ -6,7 +6,8 @@ import WidgetKit
 enum WidgetSync {
     private static var pending: Task<Void, Never>?
 
-    static func schedule(_ ctx: ModelContext = DataStore.context) {
+    static func schedule(_ context: ModelContext? = nil) {
+        let ctx = context ?? DataStore.context
         pending?.cancel()
         pending = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(400))
@@ -15,7 +16,8 @@ enum WidgetSync {
         }
     }
 
-    static func refresh(_ ctx: ModelContext = DataStore.context) {
+    static func refresh(_ context: ModelContext? = nil) {
+        let ctx = context ?? DataStore.context
         let defaults = UserDefaults.standard
         let base = defaults.string(forKey: "baseCurrency") ?? "UZS"
         let hide = defaults.bool(forKey: "hideAmounts")

@@ -122,7 +122,8 @@ extension Notifier {
     static let reviewIncomeCategory = "TX_REVIEW_INC"
 
     @MainActor
-    static func registerReviewCategories(_ ctx: ModelContext = DataStore.context) {
+    static func registerReviewCategories(_ context: ModelContext? = nil) {
+        let ctx = context ?? DataStore.context
         let comment = UNTextInputNotificationAction(identifier: "comment", title: "Izoh / kategoriya yozish",
                                                     options: [], textInputButtonTitle: "Saqlash",
                                                     textInputPlaceholder: "masalan: ovqat — tushlik")
