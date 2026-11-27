@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 struct TransactionEditor: View {
     var existing: FinTransaction? = nil
@@ -85,7 +86,7 @@ struct TransactionEditor: View {
                     if kind != .transfer {
                         TextField(kind == .income ? "Kimdan / manba" : "Do'kon yoki xizmat", text: $merchant)
                     }
-                    TextField("Izoh", text: $note, axis: .vertical)
+                    TextField("Izoh: nima uchun? (masalan, tushlik, onamga)", text: $note, axis: .vertical)
                     DatePicker("Sana", selection: $date)
                 }
 
@@ -174,6 +175,7 @@ struct TransactionEditor: View {
         let toAmount = parseAmount(toAmountText) ?? 0
         let cat = kind == .transfer ? "" : (category.isEmpty ? FinanceEngine.guessCategory(text: merchant, kind: kind, ctx: context) : category)
         if let t = existing {
+            let previousCategory = t.categoryName
             if t.balanceApplied { FinanceEngine.applyEffect(of: t, sign: -1, ctx: context) }
             t.kind = kind
             t.amount = amount
@@ -186,8 +188,14 @@ struct TransactionEditor: View {
             t.note = note
             t.date = date
             t.balanceApplied = true
+            if (t.needsReview || t.source != .manual) && previousCategory != cat && !cat.isEmpty {
+                FinanceEngine.learn(category: cat, from: t, ctx: context)
+            }
+            t.needsReview = false
             FinanceEngine.applyEffect(of: t, sign: 1, ctx: context)
             try? context.save()
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["review-\(t.id.uuidString)"])
+            WidgetSync.schedule(context)
         } else {
             FinanceEngine.addTransaction(kind: kind, amount: amount, currency: currency, accountID: accountID,
                                          toAccountID: kind == .transfer ? toAccountID : nil, toAmount: toAmount,

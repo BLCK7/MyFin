@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import UserNotifications
 
 struct FinanceSummary {
     var totalAssets: Double = 0
@@ -120,18 +121,22 @@ enum FinanceEngine {
         if applyToBalance { applyEffect(of: tx, sign: 1, ctx: ctx) }
         try? ctx.save()
         if kind == .expense { checkBudget(category: category, ctx: ctx) }
+        WidgetSync.schedule(ctx)
         return tx
     }
 
     static func delete(_ tx: FinTransaction, ctx: ModelContext) {
         if tx.balanceApplied { applyEffect(of: tx, sign: -1, ctx: ctx) }
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["review-\(tx.id.uuidString)"])
         ctx.delete(tx)
         try? ctx.save()
+        WidgetSync.schedule(ctx)
     }
 
     static func setBalance(_ account: Account, to value: Double, ctx: ModelContext) {
         account.balance = value
         try? ctx.save()
+        WidgetSync.schedule(ctx)
     }
 
     static func deleteAccount(_ account: Account, ctx: ModelContext) {
@@ -241,13 +246,55 @@ enum FinanceEngine {
 
     static func guessCategory(text: String, kind: TxKind, ctx: ModelContext) -> String {
         let lower = text.lowercased()
-        let cats = categories(ctx).filter { $0.kind == kind }
-        for c in cats {
+        var bestName: String? = nil
+        var bestLen = 0
+        var bestOrder = Int.max
+        for c in categories(ctx) where c.kind == kind {
             for k in c.keywordList where lower.contains(k) {
-                return c.name
+                if k.count > bestLen || (k.count == bestLen && c.sortOrder < bestOrder) {
+                    bestName = c.name
+                    bestLen = k.count
+                    bestOrder = c.sortOrder
+                }
             }
         }
-        return kind == .income ? "Boshqa kirim" : "Boshqa xarajat"
+        return bestName ?? (kind == .income ? "Boshqa kirim" : "Boshqa xarajat")
+    }
+
+    static func topCategories(kind: TxKind, limit: Int, ctx: ModelContext) -> [String] {
+        let since = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+        let txs = (try? ctx.fetch(FetchDescriptor<FinTransaction>())) ?? []
+        var counts: [String: Int] = [:]
+        for t in txs where t.kind == kind && t.date >= since && !t.categoryName.isEmpty {
+            counts[t.categoryName, default: 0] += 1
+        }
+        let valid = Set(categories(ctx).filter { $0.kind == kind }.map(\.name))
+        var result = counts.filter { valid.contains($0.key) }.sorted { $0.value > $1.value }.map(\.key)
+        let defaults = kind == .income
+            ? ["Maosh", "Kirim o'tkazma", "Qo'shimcha daromad", "Boshqa kirim"]
+            : ["Oziq-ovqat", "Kafe va restoran", SeedData.personalCategory, "Transport"]
+        for d in defaults where !result.contains(d) && valid.contains(d) { result.append(d) }
+        return Array(result.prefix(limit))
+    }
+
+    /// Remembers the user's choice: the merchant (or phone number) becomes a keyword of the chosen category.
+    static func learn(category: String, from tx: FinTransaction, ctx: ModelContext) {
+        guard UserDefaults.standard.object(forKey: "learnCategories") as? Bool ?? true else { return }
+        var keys: [String] = []
+        if let phone = SMSParser.phoneCompact(in: tx.merchant + " " + tx.rawText) { keys.append(phone) }
+        let m = tx.merchant.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if m.count >= 3 && m.count <= 40 && !m.hasPrefix("+998") { keys.append(m) }
+        guard !keys.isEmpty else { return }
+        for c in categories(ctx) where c.kind == tx.kind {
+            var list = c.keywordList
+            if c.name == category {
+                for k in keys where !list.contains(k) { list.append(k) }
+            } else {
+                list.removeAll { keys.contains($0) }
+            }
+            let joined = list.joined(separator: ",")
+            if joined != c.keywords.lowercased() { c.keywords = joined }
+        }
     }
 
     // MARK: Automation (SMS / Apple Pay)
@@ -318,11 +365,20 @@ enum FinanceEngine {
                 if dup.rawText.isEmpty { dup.rawText = trimmed }
                 lines.append("Bu operatsiya boshqa manbadan allaqachon yozilgan (\(dup.source.title)).")
             } else {
-                let category = guessCategory(text: p.merchant + " " + trimmed, kind: kind, ctx: ctx)
-                addTransaction(kind: kind, amount: amount, currency: p.currency, accountID: acc.id,
-                               category: category, merchant: p.merchant, source: source, rawText: trimmed, ctx: ctx)
+                var merchant = p.merchant
+                let phone = SMSParser.phoneCompact(in: trimmed)
+                if let phone {
+                    let pretty = SMSParser.prettyPhone(phone)
+                    merchant = merchant.isEmpty ? pretty : "\(merchant) \(pretty)"
+                }
+                let category = guessCategory(text: merchant + " " + (phone ?? "") + " " + trimmed, kind: kind, ctx: ctx)
+                let tx = addTransaction(kind: kind, amount: amount, currency: p.currency, accountID: acc.id,
+                                        category: category, merchant: merchant, source: source, rawText: trimmed, ctx: ctx)
+                tx.needsReview = true
+                try? ctx.save()
+                Notifier.postReview(tx, account: acc)
                 let signed = p.isIncome ? amount : -amount
-                let title = p.merchant.isEmpty ? category : p.merchant
+                let title = merchant.isEmpty ? category : merchant
                 lines.append("\(title): \(Money.format(signed, p.currency, signed: true))")
             }
         }
@@ -335,6 +391,7 @@ enum FinanceEngine {
         }
         if created { lines.append("Yangi karta qo'shildi (•\(acc.cardLast4)).") }
         try? ctx.save()
+        WidgetSync.schedule(ctx)
         return lines.joined(separator: "\n")
     }
 
@@ -381,8 +438,11 @@ enum FinanceEngine {
             return "Bu xarid allaqachon yozilgan (\(dup.source.title))."
         }
         let category = guessCategory(text: merchant, kind: .expense, ctx: ctx)
-        addTransaction(kind: .expense, amount: amount, currency: currency, accountID: acc.id, category: category,
-                       merchant: merchant, note: "Apple Pay", source: .applePay, ctx: ctx)
+        let tx = addTransaction(kind: .expense, amount: amount, currency: currency, accountID: acc.id, category: category,
+                                merchant: merchant, note: "Apple Pay", source: .applePay, ctx: ctx)
+        tx.needsReview = true
+        try? ctx.save()
+        Notifier.postReview(tx, account: acc)
         return "\(merchant.isEmpty ? category : merchant): \(Money.format(-amount, currency, signed: true))\n\(acc.displayName): \(Money.format(acc.balance, acc.currency))"
     }
 }

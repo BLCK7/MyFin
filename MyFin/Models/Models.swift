@@ -56,6 +56,7 @@ final class FinTransaction {
     var sourceRaw: String = TxSource.manual.rawValue
     var rawText: String = ""
     var balanceApplied: Bool = true
+    var needsReview: Bool = false
 
     init(kind: TxKind, amount: Double, currency: String, accountID: UUID?, toAccountID: UUID? = nil,
          toAmount: Double = 0, categoryName: String = "", merchant: String = "", note: String = "",
@@ -286,5 +287,24 @@ final class RecurringPayment {
             return cal.date(from: nc) ?? next
         }
         return thisMonth
+    }
+}
+
+@Model
+final class VaultItem {
+    var id: UUID = UUID()
+    var kindRaw: String = "custom"
+    @Attribute(.externalStorage) var payload: Data = Data()
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
+    var sortOrder: Int = 0
+
+    init(kind: String, payload: Data, sortOrder: Int = 0) {
+        self.id = UUID()
+        self.kindRaw = kind
+        self.payload = payload
+        self.createdAt = Date()
+        self.updatedAt = Date()
+        self.sortOrder = sortOrder
     }
 }

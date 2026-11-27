@@ -1,0 +1,176 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "${applicationName} balance": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Баланс ${applicationName}"
+          }
+        }
+      }
+    },
+    "Show my balance in ${applicationName}": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Покажи баланс в ${applicationName}"
+          }
+        }
+      }
+    },
+    "How much money do I have in ${applicationName}": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сколько у меня денег в ${applicationName}"
+          }
+        }
+      }
+    },
+    "Add expense in ${applicationName}": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавь расход в ${applicationName}"
+          }
+        }
+      }
+    },
+    "Log expense in ${applicationName}": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запиши расход в ${applicationName}"
+          }
+        }
+      }
+    },
+    "${applicationName} expense": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Расход в ${applicationName}"
+          }
+        }
+      }
+    },
+    "Add income in ${applicationName}": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавь доход в ${applicationName}"
+          }
+        }
+      }
+    },
+    "${applicationName} income": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Доход в ${applicationName}"
+          }
+        }
+      }
+    },
+    "How much did I spend today in ${applicationName}": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сколько я потратил сегодня в ${applicationName}"
+          }
+        }
+      }
+    },
+    "${applicationName} today": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${applicationName} сегодня"
+          }
+        }
+      }
+    },
+    "Card balance in ${applicationName}": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Баланс карты в ${applicationName}"
+          }
+        }
+      }
+    },
+    "Account balance in ${applicationName}": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Баланс счёта в ${applicationName}"
+          }
+        }
+      }
+    },
+    "New transaction in ${applicationName}": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новая операция в ${applicationName}"
+          }
+        }
+      }
+    },
+    "Open ${applicationName} new transaction": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открой ${applicationName} новая операция"
+          }
+        }
+      }
+    },
+    "${applicationName} bank SMS": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${applicationName} банковское СМС"
+          }
+        }
+      }
+    },
+    "${applicationName} bank notification": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${applicationName} уведомление банка"
+          }
+        }
+      }
+    },
+    "${applicationName} Apple Pay": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${applicationName} Эппл Пэй"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

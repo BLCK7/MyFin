@@ -1,6 +1,7 @@
 name: MyFin
 options:
   bundleIdPrefix: uz.saminov
+  developmentLanguage: en
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true
@@ -12,13 +13,17 @@ settings:
     TARGETED_DEVICE_FAMILY: "1"
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
-    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
 targets:
   MyFin:
     type: application
     platform: iOS
     sources:
       - path: MyFin
+      - path: Shared
+    dependencies:
+      - target: MyFinWidget
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: uz.saminov.myfin
@@ -30,6 +35,8 @@ targets:
       path: Support/Info.plist
       properties:
         CFBundleDisplayName: MyFin
+        CFBundleDevelopmentRegion: en
+        CFBundleLocalizations: [en, ru, uz]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
@@ -38,8 +45,34 @@ targets:
           - UIInterfaceOrientationPortrait
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+        CFBundleURLTypes:
+          - CFBundleURLName: uz.saminov.myfin
+            CFBundleURLSchemes: [myfin]
         NSFaceIDUsageDescription: "MyFin moliyaviy ma'lumotlaringizni himoyalash uchun Face ID'dan foydalanadi."
+        NSPhotoLibraryUsageDescription: "Hujjat rasmlarini shifrlangan seyfga qo'shish uchun."
+        NSCameraUsageDescription: "Hujjat yoki chekni suratga olish uchun."
         ITSAppUsesNonExemptEncryption: false
+  MyFinWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: MyFinWidget
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: uz.saminov.myfin.widget
+        PRODUCT_NAME: MyFinWidget
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+    info:
+      path: Support/Widget-Info.plist
+      properties:
+        CFBundleDisplayName: MyFin
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
 schemes:
   MyFin:
     build:

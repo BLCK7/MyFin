@@ -124,6 +124,7 @@ enum BackupManager {
         fetchAll(Budget.self, ctx).forEach { ctx.delete($0) }
         fetchAll(Goal.self, ctx).forEach { ctx.delete($0) }
         fetchAll(RecurringPayment.self, ctx).forEach { ctx.delete($0) }
+        fetchAll(VaultItem.self, ctx).forEach { ctx.delete($0) }
         try? ctx.save()
     }
 

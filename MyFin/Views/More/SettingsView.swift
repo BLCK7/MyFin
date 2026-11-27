@@ -88,6 +88,14 @@ struct SettingsView: View {
                 } label: {
                     Label("SMS / Apple Pay avtomatizatsiyasi", systemImage: "bolt.badge.automatic.fill")
                 }
+                Toggle(isOn: Binding(get: { UserDefaults.standard.object(forKey: "reviewNotifications") as? Bool ?? true },
+                                     set: { UserDefaults.standard.set($0, forKey: "reviewNotifications") })) {
+                    Label("Har operatsiyadan keyin izoh so'rash", systemImage: "text.bubble")
+                }
+                Toggle(isOn: Binding(get: { UserDefaults.standard.object(forKey: "learnCategories") as? Bool ?? true },
+                                     set: { UserDefaults.standard.set($0, forKey: "learnCategories") })) {
+                    Label("Tanlovlarimdan o'rganish", systemImage: "brain")
+                }
             } header: {
                 Text("Avtomatizatsiya")
             } footer: {
@@ -138,7 +146,7 @@ struct SettingsView: View {
             } header: {
                 Text("Ma'lumotlar")
             } footer: {
-                Text("Ilovani o'chirib qayta o'rnatsangiz, ma'lumotlar yo'qoladi. Muntazam zaxira nusxa olib, Fayllar ilovasiga saqlang.")
+                Text("Ilovani o'chirib qayta o'rnatsangiz, ma'lumotlar yo'qoladi. Muntazam zaxira nusxa olib, Fayllar ilovasiga saqlang. Shaxsiy seyf zaxiraga kirmaydi: uning kaliti faqat shu iPhone'da.")
             }
 
             Section {
@@ -180,6 +188,8 @@ struct SettingsView: View {
         .confirmationDialog("Hamma narsa o'chirilsinmi?", isPresented: $confirmReset, titleVisibility: .visible) {
             Button("Ha, o'chirish", role: .destructive) {
                 BackupManager.wipe(context)
+                VaultCrypto.destroyKey()
+                UserDefaults.standard.removeObject(forKey: "seedVersion")
                 SeedData.seedIfNeeded(context)
                 PasscodeStore.clear()
                 faceIDEnabled = false
@@ -233,7 +243,11 @@ struct AutomationView: View {
                 step(2, "MyFin amali", "Amal: MyFin → “Bank bildirishnomasini yozish”. Matn = bildirishnoma matni (Body), Sarlavha = sarlavha (Title). “Darhol ishga tushirish”ni tanlang.")
                 step(3, "Ikki marta yozilmaydi", "Bitta operatsiya SMS'dan ham, bildirishnomadan ham kelsa, MyFin 6 daqiqa ichidagi bir xil summani bitta deb hisoblaydi va faqat balansni yangilaydi.")
 
-                Text("3-usul · Apple Pay").font(.headline).padding(.top, 4)
+                Text("3-usul · Telegram bot (CardXabar, HUMO) · iOS 27+").font(.headline).padding(.top, 4)
+                step(1, "Bot xabarlari", "Uzcard CardXabar yoki HUMO botiga kartani ulang. Telegram → Sozlamalar → Bildirishnomalar → “Xabar matnini ko'rsatish” yoqilgan bo'lsin.")
+                step(2, "Bildirishnoma triggeri", "Shortcuts → “Avtomatizatsiya” → “+” → “Bildirishnoma” → ilova: Telegram → sarlavhada “CardXabar” (yoki HUMO bot nomi) bo'lsa → “Darhol ishga tushirish”. Amal: MyFin → “Bank bildirishnomasini yozish”, Matn = Body, Sarlavha = Title.")
+
+                Text("4-usul · Apple Pay").font(.headline).padding(.top, 4)
                 step(1, "Tranzaksiya triggeri", "“Avtomatizatsiya” → “+” → “Tranzaksiya” (Transaction) → kartangiz → “Darhol”. Amal: MyFin → “Apple Pay xaridini yozish”; Summa, Do'kon, Karta maydonlariga kiritma qiymatlarini bering.")
 
                 Button {

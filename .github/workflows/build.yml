@@ -62,6 +62,11 @@ jobs:
         run: |
           mkdir -p out/Payload
           cp -R build/Build/Products/Release-iphoneos/MyFin.app out/Payload/
+          APP=out/Payload/MyFin.app
+          ls "$APP/PlugIns"
+          codesign -f -s - --entitlements Support/Widget.entitlements "$APP/PlugIns/MyFinWidget.appex"
+          codesign -f -s - --entitlements Support/MyFin.entitlements "$APP"
+          codesign -d --entitlements - "$APP" 2>/dev/null | grep -A2 application-groups
           cd out && zip -qry MyFin.ipa Payload && cd ..
           SIZE=$(stat -f%z out/MyFin.ipa)
           python3 scripts/make_source.py "$VERSION" "$BUILD" "$SIZE" "${{ github.repository }}" > out/source.json

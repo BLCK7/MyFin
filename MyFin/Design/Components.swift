@@ -1,49 +1,5 @@
 import SwiftUI
 
-enum Money {
-    static func symbol(_ code: String) -> String {
-        switch code {
-        case "UZS": return "so'm"
-        case "USD": return "$"
-        case "EUR": return "€"
-        case "RUB": return "₽"
-        default: return code
-        }
-    }
-
-    static func decimals(_ code: String) -> Int { code == "UZS" ? 0 : 2 }
-
-    static func number(_ value: Double, decimals: Int) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .decimal
-        f.groupingSeparator = " "
-        f.decimalSeparator = ","
-        f.usesGroupingSeparator = true
-        f.maximumFractionDigits = decimals
-        f.minimumFractionDigits = 0
-        return f.string(from: NSNumber(value: value)) ?? "0"
-    }
-
-    static func format(_ value: Double, _ code: String, signed: Bool = false) -> String {
-        let num = number(abs(value), decimals: decimals(code))
-        var sign = value < 0 ? "−" : ""
-        if signed && value > 0 { sign = "+" }
-        switch code {
-        case "USD", "EUR": return "\(sign)\(symbol(code))\(num)"
-        default: return "\(sign)\(num) \(symbol(code))"
-        }
-    }
-
-    static func compact(_ value: Double) -> String {
-        let a = abs(value)
-        let sign = value < 0 ? "−" : ""
-        if a >= 1_000_000_000 { return sign + number(a / 1_000_000_000, decimals: 1) + " mlrd" }
-        if a >= 1_000_000 { return sign + number(a / 1_000_000, decimals: 1) + " mln" }
-        if a >= 1_000 { return sign + number(a / 1_000, decimals: 0) + " ming" }
-        return sign + number(a, decimals: 0)
-    }
-}
-
 struct AmountText: View {
     let value: Double
     var currency: String = "UZS"

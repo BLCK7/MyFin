@@ -9,7 +9,11 @@ icon = f"https://raw.githubusercontent.com/{repo}/main/icon.png"
 today = date.today().isoformat()
 desc = ("Shaxsiy moliya boshqaruvi: kartalar, naqd pul, qarzlar, byudjet, maqsadlar va tahlil. "
         "Bank SMS va Apple Pay orqali avtomatik kuzatish. Liquid Glass dizayn.")
-privacy = {"NSFaceIDUsageDescription": "MyFin moliyaviy ma'lumotlaringizni himoyalash uchun Face ID'dan foydalanadi."}
+privacy = {
+    "NSFaceIDUsageDescription": "MyFin moliyaviy ma'lumotlaringizni himoyalash uchun Face ID'dan foydalanadi.",
+    "NSPhotoLibraryUsageDescription": "Hujjat rasmlarini shifrlangan seyfga qo'shish uchun.",
+    "NSCameraUsageDescription": "Hujjat yoki chekni suratga olish uchun.",
+}
 
 source = {
     "name": "MyFin",
@@ -43,7 +47,7 @@ source = {
         "versionDescription": f"Build #{build}",
         "downloadURL": ipa,
         "size": size,
-        "appPermissions": {"entitlements": [], "privacy": privacy},
+        "appPermissions": {"entitlements": ["com.apple.security.application-groups"], "privacy": privacy},
     }],
     "news": [],
 }

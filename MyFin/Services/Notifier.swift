@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import UserNotifications
 import LocalAuthentication
 
@@ -112,6 +113,68 @@ enum Biometrics {
             return try await ctx.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
         } catch {
             return false
+        }
+    }
+}
+
+extension Notifier {
+    static let reviewExpenseCategory = "TX_REVIEW_EXP"
+    static let reviewIncomeCategory = "TX_REVIEW_INC"
+
+    @MainActor
+    static func registerReviewCategories(_ ctx: ModelContext = DataStore.context) {
+        let comment = UNTextInputNotificationAction(identifier: "comment", title: "Izoh / kategoriya yozish",
+                                                    options: [], textInputButtonTitle: "Saqlash",
+                                                    textInputPlaceholder: "masalan: ovqat — tushlik")
+        let open = UNNotificationAction(identifier: "open", title: "Ochish", options: [.foreground])
+        func actions(_ kind: TxKind) -> [UNNotificationAction] {
+            let top = FinanceEngine.topCategories(kind: kind, limit: 4, ctx: ctx)
+            var list: [UNNotificationAction] = [comment]
+            for name in top {
+                list.append(UNNotificationAction(identifier: "cat:\(name)", title: name, options: []))
+            }
+            list.append(open)
+            return list
+        }
+        let exp = UNNotificationCategory(identifier: reviewExpenseCategory, actions: actions(.expense),
+                                         intentIdentifiers: [], options: [.customDismissAction])
+        let inc = UNNotificationCategory(identifier: reviewIncomeCategory, actions: actions(.income),
+                                         intentIdentifiers: [], options: [.customDismissAction])
+        UNUserNotificationCenter.current().setNotificationCategories([exp, inc])
+    }
+
+    @MainActor
+    static func postReview(_ tx: FinTransaction, account: Account?) {
+        guard UserDefaults.standard.object(forKey: "reviewNotifications") as? Bool ?? true else { return }
+        let content = UNMutableNotificationContent()
+        let signed = tx.kind == .income ? tx.amount : -tx.amount
+        content.title = "\(Money.format(signed, tx.currency, signed: true)) · \(tx.title)"
+        let acc = account?.displayName ?? ""
+        content.body = "\(acc.isEmpty ? "" : acc + " · ")\(tx.categoryName). Izoh va kategoriya qo'shish uchun bosib turing."
+        content.sound = .default
+        content.categoryIdentifier = tx.kind == .income ? reviewIncomeCategory : reviewExpenseCategory
+        content.threadIdentifier = "tx-review"
+        content.userInfo = ["txID": tx.id.uuidString]
+        let req = UNNotificationRequest(identifier: "review-\(tx.id.uuidString)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(req)
+    }
+
+    static func scheduleExpiry(id: UUID, title: String, date: Date?) {
+        let ids = ["vault-\(id.uuidString)-30", "vault-\(id.uuidString)-7"]
+        cancel(ids)
+        guard let date, date > Date() else { return }
+        let cal = Calendar.current
+        for (offset, rid) in [(-30, ids[0]), (-7, ids[1])] {
+            guard let d = cal.date(byAdding: .day, value: offset, to: date), d > Date() else { continue }
+            var comps = cal.dateComponents([.year, .month, .day], from: d)
+            comps.hour = 10
+            let content = UNMutableNotificationContent()
+            content.title = "Hujjat muddati tugayapti"
+            content.body = "\(title): \(-offset) kundan keyin amal qilish muddati tugaydi."
+            content.sound = .default
+            UNUserNotificationCenter.current().add(UNNotificationRequest(
+                identifier: rid, content: content,
+                trigger: UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)))
         }
     }
 }

@@ -21,6 +21,24 @@ struct MoreView: View {
                     }
 
                     NavigationLink {
+                        VaultView()
+                    } label: {
+                        GlassCard(tint: Color(hex: "#2563EB")) {
+                            HStack(spacing: 14) {
+                                IconBadge(icon: "lock.doc.fill", color: Color(hex: "#2563EB"), size: 46)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Shaxsiy seyf").font(.headline)
+                                    Text("Pasport, ID, karta ma'lumotlari · AES-256 shifrlangan")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    NavigationLink {
                         AutomationView()
                     } label: {
                         GlassCard(tint: Palette.accent) {

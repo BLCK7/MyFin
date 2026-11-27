@@ -131,6 +131,24 @@ enum SMSParser {
         return result.sorted { $0.location < $1.location }
     }
 
+    /// Uzbek mobile number in compact form, e.g. "+998901234567".
+    static func phoneCompact(in text: String) -> String? {
+        let pattern = #"(?<!\d)\+?998[\s\-]?\(?(\d{2})\)?[\s\-]?(\d{3})[\s\-]?(\d{2})[\s\-]?(\d{2})(?!\d)"#
+        guard let re = try? NSRegularExpression(pattern: pattern),
+              let m = re.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) else { return nil }
+        let ns = text as NSString
+        let parts = (1...4).map { ns.substring(with: m.range(at: $0)) }
+        return "+998" + parts.joined()
+    }
+
+    static func prettyPhone(_ compact: String) -> String {
+        let d = Array(compact.filter(\.isNumber))
+        guard d.count == 12 else { return compact }
+        let s = String(d)
+        func sub(_ a: Int, _ b: Int) -> String { String(s[s.index(s.startIndex, offsetBy: a)..<s.index(s.startIndex, offsetBy: b)]) }
+        return "+998 \(sub(3, 5)) \(sub(5, 8)) \(sub(8, 10)) \(sub(10, 12))"
+    }
+
     static func last4(in text: String) -> String? {
         let patterns = [
             #"(?:\*+|[xX]{2,}|•+|#)\s?(\d{4})(?!\d)"#,

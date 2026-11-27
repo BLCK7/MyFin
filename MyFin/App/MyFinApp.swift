@@ -3,6 +3,7 @@ import SwiftData
 
 @main
 struct MyFinApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @AppStorage("appearance") private var appearance = "dark"
 
     var body: some Scene {
@@ -10,6 +11,8 @@ struct MyFinApp: App {
             RootView()
                 .environment(RateStore.shared)
                 .environment(AppLock.shared)
+                .environment(AppRouter.shared)
+                .environment(VaultSession.shared)
                 .preferredColorScheme(colorScheme)
                 .tint(Palette.accent)
         }
@@ -32,7 +35,12 @@ struct RootView: View {
     @Environment(\.modelContext) private var context
     @Environment(RateStore.self) private var rates
     @Environment(AppLock.self) private var lock
-    @State private var showSplash = true
+    @Environment(AppRouter.self) private var router
+    @State private var overlay = OverlayState.shared
+
+    private var overlayVisible: Bool {
+        overlay.showSplash || (onboarded && pinSet && lock.isLocked) || overlay.privacy
+    }
 
     var body: some View {
         ZStack {
@@ -48,41 +56,37 @@ struct RootView: View {
             } else {
                 MainTabs()
             }
-
-            if onboarded && pinSet && lock.isLocked && !showSplash {
-                LockScreen()
-                    .transition(.opacity.combined(with: .scale(scale: 1.04)))
-                    .zIndex(2)
-            }
-
-            if onboarded && !lock.isLocked && scenePhase != .active {
-                PrivacyCover()
-                    .transition(.opacity)
-                    .zIndex(3)
-            }
-
-            if showSplash {
-                SplashView()
-                    .transition(.opacity.combined(with: .scale(scale: 1.08)))
-                    .zIndex(4)
-            }
         }
-        .animation(.smooth(duration: 0.4), value: lock.isLocked)
         .animation(.smooth, value: onboarded)
+        .onChange(of: overlayVisible, initial: true) { _, visible in
+            OverlayWindow.shared.setVisible(visible)
+        }
         .task {
             SeedData.seedIfNeeded(context)
             pinSet = PasscodeStore.isSet
+            Notifier.registerReviewCategories(context)
             try? await Task.sleep(for: .milliseconds(1900))
-            withAnimation(.smooth(duration: 0.5)) { showSplash = false }
+            overlay.showSplash = false
             await rates.refreshIfStale()
+            WidgetSync.refresh(context)
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .background: lock.didEnterBackground()
-            case .active: lock.didBecomeActive()
-            default: break
+            case .background:
+                lock.didEnterBackground()
+                VaultSession.shared.lock()
+                WidgetSync.refresh(context)
+            case .active:
+                lock.didBecomeActive()
+            default:
+                break
             }
+            overlay.privacy = onboarded && !lock.isLocked && phase != .active
         }
+        .onChange(of: lock.isLocked) { _, _ in
+            overlay.privacy = onboarded && !lock.isLocked && scenePhase != .active
+        }
+        .onOpenURL { router.handle($0) }
     }
 }
 
@@ -100,8 +104,12 @@ struct PrivacyCover: View {
 }
 
 struct MainTabs: View {
+    @Environment(AppRouter.self) private var router
+    @Environment(\.modelContext) private var context
     @State private var tab: AppTab = .home
-    @State private var showAdd = false
+    @State private var addKind: TxKind?
+    @State private var openTx: FinTransaction?
+    @State private var showVault = false
 
     var body: some View {
         TabView(selection: $tab) {
@@ -125,16 +133,37 @@ struct MainTabs: View {
         .tabViewBottomAccessory {
             Button {
                 Haptics.soft()
-                showAdd = true
+                addKind = .expense
             } label: {
                 Label("Operatsiya qo'shish", systemImage: "plus.circle.fill")
                     .font(.subheadline.weight(.semibold))
-                    .symbolEffect(.bounce, value: showAdd)
+                    .symbolEffect(.bounce, value: addKind)
                     .frame(maxWidth: .infinity)
             }
         }
-        .sheet(isPresented: $showAdd) {
-            TransactionEditor()
+        .sheet(item: $addKind) { kind in
+            TransactionEditor(presetKind: kind)
+        }
+        .sheet(item: $openTx) { tx in
+            TransactionEditor(existing: tx)
+        }
+        .sheet(isPresented: $showVault) {
+            NavigationStack { VaultView() }
+        }
+        .onChange(of: router.addKind, initial: true) { _, k in
+            guard let k else { return }
+            router.addKind = nil
+            addKind = k
+        }
+        .onChange(of: router.openTransactionID, initial: true) { _, id in
+            guard let id else { return }
+            router.openTransactionID = nil
+            openTx = ReviewHandler.transaction(id, ctx: context)
+        }
+        .onChange(of: router.openVault, initial: true) { _, v in
+            guard v else { return }
+            router.openVault = false
+            showVault = true
         }
     }
 }

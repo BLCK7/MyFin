@@ -1,28 +1,5 @@
 import SwiftUI
 
-extension Color {
-    init(hex: String) {
-        var s = hex.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "#", with: "")
-        if s.count == 3 { s = s.map { "\($0)\($0)" }.joined() }
-        var value: UInt64 = 0
-        Scanner(string: s).scanHexInt64(&value)
-        let r = Double((value >> 16) & 0xFF) / 255.0
-        let g = Double((value >> 8) & 0xFF) / 255.0
-        let b = Double(value & 0xFF) / 255.0
-        self.init(red: r, green: g, blue: b)
-    }
-}
-
-enum Palette {
-    static let accent = Color(hex: "#7C8CFF")
-    static let income = Color(hex: "#34D399")
-    static let expense = Color(hex: "#FB7185")
-    static let transfer = Color(hex: "#60A5FA")
-    static let warning = Color(hex: "#FBBF24")
-    static let swatches = ["#4F7CFF", "#7C3AED", "#EC4899", "#F59E0B", "#10B981",
-                           "#06B6D4", "#EF4444", "#64748B", "#0EA5E9", "#84CC16"]
-}
-
 struct AppBackground: View {
     @Environment(\.colorScheme) private var scheme
     @State private var phase = false

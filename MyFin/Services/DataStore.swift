@@ -5,7 +5,7 @@ import SwiftData
 enum DataStore {
     static let schema = Schema([
         Account.self, FinTransaction.self, FinCategory.self, Debt.self,
-        DebtPayment.self, Budget.self, Goal.self, RecurringPayment.self
+        DebtPayment.self, Budget.self, Goal.self, RecurringPayment.self, VaultItem.self
     ])
 
     static let container: ModelContainer = {
@@ -75,13 +75,43 @@ enum SeedData {
         CategorySeed(name: "Boshqa kirim", icon: "plus.circle.fill", color: "#94A3B8", kind: .income, keywords: "")
     ]
 
+    static let personalCategory = "Shaxsiy ehtiyojlar"
+    static let phoneCategory = "Telefon to'lovi"
+
+    static let v2Categories: [CategorySeed] = [
+        CategorySeed(name: personalCategory, icon: "person.fill", color: "#F472B6", kind: .expense,
+                     keywords: "gigiena,parfyum,kosmetika,sartarosh,barber,salon"),
+        CategorySeed(name: phoneCategory, icon: "iphone.gen3", color: "#38BDF8", kind: .expense,
+                     keywords: "+998,mobil,popolnenie mobil,telefon,balans telefon"),
+        CategorySeed(name: "Claude obuna", icon: "sparkles", color: "#D97757", kind: .expense,
+                     keywords: "claude.ai,claude,anthropic")
+    ]
+
     static func seedIfNeeded(_ ctx: ModelContext) {
-        let count = (try? ctx.fetchCount(FetchDescriptor<FinCategory>())) ?? 0
-        guard count == 0 else { return }
-        for (i, c) in categories.enumerated() {
-            ctx.insert(FinCategory(name: c.name, icon: c.icon, colorHex: c.color, kind: c.kind,
-                                   keywords: c.keywords, sortOrder: i, isSystem: true))
+        let existing = (try? ctx.fetch(FetchDescriptor<FinCategory>())) ?? []
+        let defaults = UserDefaults.standard
+        if existing.isEmpty {
+            for (i, c) in (categories + v2Categories).enumerated() {
+                ctx.insert(FinCategory(name: c.name, icon: c.icon, colorHex: c.color, kind: c.kind,
+                                       keywords: c.keywords, sortOrder: i, isSystem: true))
+            }
+            defaults.set(2, forKey: "seedVersion")
+            try? ctx.save()
+            return
         }
-        try? ctx.save()
+        if defaults.integer(forKey: "seedVersion") < 2 {
+            let names = Set(existing.map(\.name))
+            var order = (existing.map(\.sortOrder).max() ?? 0) + 1
+            for c in v2Categories where !names.contains(c.name) {
+                ctx.insert(FinCategory(name: c.name, icon: c.icon, colorHex: c.color, kind: c.kind,
+                                       keywords: c.keywords, sortOrder: order, isSystem: true))
+                order += 1
+            }
+            if let subs = existing.first(where: { $0.name == "Obunalar" }) {
+                subs.keywords = subs.keywordList.filter { $0 != "claude" && $0 != "anthropic" }.joined(separator: ",")
+            }
+            defaults.set(2, forKey: "seedVersion")
+            try? ctx.save()
+        }
     }
 }

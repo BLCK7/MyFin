@@ -39,6 +39,8 @@ struct DashboardView: View {
                         .appearAnimation(0)
                     MonthCard(summary: summary, base: base)
                         .appearAnimation(1)
+                    ReviewInboxCard(items: transactions.filter(\.needsReview), accounts: accounts,
+                                    categories: categories) { editing = $0 }
                     AccountsStrip(accounts: activeAccounts) { tab = .accounts }
                         .appearAnimation(2)
                     if !slices.isEmpty {
@@ -313,6 +315,49 @@ private struct RecentCard: View {
                     }
                 }
             }
+        }
+    }
+}
+
+private struct ReviewInboxCard: View {
+    let items: [FinTransaction]
+    let accounts: [Account]
+    let categories: [FinCategory]
+    let onSelect: (FinTransaction) -> Void
+
+    var body: some View {
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label("Izoh kutmoqda", systemImage: "text.bubble.fill")
+                        .font(.headline)
+                    Text("\(items.count)")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Palette.warning, in: Capsule())
+                        .foregroundStyle(.black)
+                    Spacer()
+                }
+                .padding(.horizontal, 4)
+                GlassCard(padding: 6, tint: Palette.warning) {
+                    VStack(spacing: 0) {
+                        ForEach(items.prefix(4)) { t in
+                            Button { onSelect(t) } label: {
+                                TransactionRow(transaction: t, accounts: accounts, categories: categories)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        if items.count > 4 {
+                            Text("va yana \(items.count - 4) ta…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(8)
+                        }
+                    }
+                }
+            }
+            .transition(.move(edge: .top).combined(with: .opacity))
         }
     }
 }

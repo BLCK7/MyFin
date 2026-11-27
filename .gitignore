@@ -5,3 +5,5 @@ DerivedData/
 .DS_Store
 *.ipa
 xcuserdata/
+Support/Info.plist
+Support/Widget-Info.plist
