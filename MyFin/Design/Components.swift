@@ -146,37 +146,33 @@ struct AmountField: View {
     }
 }
 
-extension Date {
-    var uzShort: String {
+enum DateFormats {
+    private static func make(_ format: String) -> DateFormatter {
         let f = DateFormatter()
         f.locale = Locale(identifier: "uz_Latn_UZ")
-        f.dateFormat = "d MMM, HH:mm"
-        return f.string(from: self)
+        f.dateFormat = format
+        return f
     }
+    static let short = make("d MMM, HH:mm")
+    static let day = make("d MMMM, EEEE")
+    static let monthYear = make("LLLL yyyy")
+    static let date = make("d MMMM yyyy")
+    static let shortMonth = make("LLL")
+}
+
+extension Date {
+    var uzShort: String { DateFormats.short.string(from: self) }
 
     var uzDay: String {
         let cal = Calendar.current
         if cal.isDateInToday(self) { return "Bugun" }
         if cal.isDateInYesterday(self) { return "Kecha" }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "uz_Latn_UZ")
-        f.dateFormat = "d MMMM, EEEE"
-        return f.string(from: self)
+        return DateFormats.day.string(from: self)
     }
 
-    var uzMonthYear: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "uz_Latn_UZ")
-        f.dateFormat = "LLLL yyyy"
-        return f.string(from: self).capitalized
-    }
+    var uzMonthYear: String { DateFormats.monthYear.string(from: self).capitalized }
 
-    var uzDate: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "uz_Latn_UZ")
-        f.dateFormat = "d MMMM yyyy"
-        return f.string(from: self)
-    }
+    var uzDate: String { DateFormats.date.string(from: self) }
 }
 
 func parseAmount(_ text: String) -> Double? {

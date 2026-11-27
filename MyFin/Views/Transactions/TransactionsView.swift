@@ -91,13 +91,13 @@ struct TransactionsView: View {
         }
     }
 
-    private var groups: [(day: Date, items: [FinTransaction])] {
+    private func groups(_ filtered: [FinTransaction]) -> [(day: Date, items: [FinTransaction])] {
         let cal = Calendar.current
         let dict = Dictionary(grouping: filtered) { cal.startOfDay(for: $0.date) }
         return dict.keys.sorted(by: >).map { (day: $0, items: dict[$0] ?? []) }
     }
 
-    private var totals: (income: Double, expense: Double) {
+    private func totals(_ filtered: [FinTransaction]) -> (income: Double, expense: Double) {
         var inc = 0.0, exp = 0.0
         for t in filtered {
             let v = rates.convert(t.amount, from: t.currency, to: base)
@@ -108,10 +108,13 @@ struct TransactionsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        let filtered = self.filtered
+        let groups = self.groups(filtered)
+        let totals = self.totals(filtered)
+        return NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 14, pinnedViews: []) {
-                    header
+                    header(totals: totals, count: filtered.count)
                     if groups.isEmpty {
                         GlassCard {
                             ContentUnavailableView(search.isEmpty ? "Bu davrda operatsiya yo'q" : "Hech narsa topilmadi",
@@ -138,7 +141,7 @@ struct TransactionsView: View {
         }
     }
 
-    private var header: some View {
+    private func header(totals: (income: Double, expense: Double), count: Int) -> some View {
         VStack(spacing: 12) {
             GlassEffectContainer(spacing: 8) {
                 HStack(spacing: 8) {
@@ -172,7 +175,7 @@ struct TransactionsView: View {
                 HStack {
                     StatPill(title: "Kirim", value: totals.income, currency: base, color: Palette.income, icon: "arrow.down.left")
                     StatPill(title: "Chiqim", value: totals.expense, currency: base, color: Palette.expense, icon: "arrow.up.right")
-                    StatPill(title: "Soni", value: Double(filtered.count), currency: "", color: Palette.accent, icon: "number")
+                    StatPill(title: "Soni", value: Double(count), currency: "", color: Palette.accent, icon: "number")
                 }
             }
         }

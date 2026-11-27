@@ -4,24 +4,105 @@ import PhotosUI
 
 struct DecryptedVaultItem: Identifiable {
     let id: UUID
-    let item: VaultItem
     let kind: VaultKind
     let payload: VaultPayload
+    let updatedAt: Date
+}
+
+enum VaultCache {
+    static func decrypt(_ inputs: [(UUID, String, Data, Date)]) async -> [DecryptedVaultItem] {
+        await Task.detached(priority: .userInitiated) {
+            inputs.compactMap { id, kind, data, updated in
+                guard let p = try? VaultCrypto.open(data) else { return nil }
+                return DecryptedVaultItem(id: id, kind: VaultKind(rawValue: kind) ?? .custom, payload: p, updatedAt: updated)
+            }
+        }.value
+    }
+}
+
+enum VaultText {
+    static func digits(_ s: String) -> String { s.filter(\.isNumber) }
+
+    static func isCardNumber(_ f: VaultField) -> Bool { f.label.hasPrefix("Karta raqami") }
+
+    static func grouped(_ v: String) -> String {
+        let d = Array(digits(v))
+        guard d.count >= 12 else { return v }
+        return stride(from: 0, to: d.count, by: 4).map { String(d[$0..<min($0 + 4, d.count)]) }.joined(separator: " ")
+    }
+
+    /// Value that goes to the clipboard: card numbers without spaces, everything else as typed.
+    static func copyValue(_ f: VaultField) -> String {
+        isCardNumber(f) ? digits(f.value) : f.value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func masked(_ f: VaultField) -> String {
+        if isCardNumber(f) { return "•••• " + String(digits(f.value).suffix(4)) }
+        let v = f.value
+        if v.count <= 4 { return String(repeating: "•", count: max(v.count, 4)) }
+        return String(repeating: "•", count: min(v.count - 2, 8)) + String(v.suffix(2))
+    }
+
+    static func allText(_ item: DecryptedVaultItem) -> String {
+        var lines = [item.payload.title.isEmpty ? item.kind.title : item.payload.title]
+        for f in item.payload.fields where !f.value.isEmpty {
+            lines.append("\(f.label): \(isCardNumber(f) ? grouped(f.value) : f.value)")
+        }
+        if let e = item.payload.expiry { lines.append("Amal qilish muddati: \(e.uzDate)") }
+        if !item.payload.notes.isEmpty { lines.append(item.payload.notes) }
+        return lines.joined(separator: "\n")
+    }
+
+    /// The fields people copy most often, shown as one-tap chips in the list.
+    static func quickFields(_ item: DecryptedVaultItem) -> [VaultField] {
+        let filled = item.payload.fields.filter { !$0.value.isEmpty }
+        let wanted: [String]
+        switch item.kind {
+        case .bankCard: wanted = ["Karta raqami", "Amal qilish muddati", "Hisob raqami"]
+        case .passport, .idCard: wanted = ["Seriya va raqam", "JShShIR", "F.I.Sh."]
+        case .license: wanted = ["Guvohnoma raqami", "Amal qilish muddati"]
+        case .custom: return Array(filled.prefix(2))
+        }
+        let picked = wanted.compactMap { w in filled.first { $0.label.hasPrefix(w) } }
+        return Array((picked.isEmpty ? filled : picked).prefix(3))
+    }
+
+    static func shortLabel(_ f: VaultField) -> String {
+        if f.label.hasPrefix("Karta raqami") { return "Karta" }
+        if f.label.hasPrefix("Amal qilish muddati") { return "Muddat" }
+        if f.label.hasPrefix("Seriya va raqam") { return "Seriya" }
+        if f.label.hasPrefix("JShShIR") { return "JShShIR" }
+        if f.label.hasPrefix("Hisob raqami") { return "IBAN" }
+        if f.label.hasPrefix("Guvohnoma raqami") { return "Raqam" }
+        return f.label
+    }
 }
 
 struct VaultView: View {
     @Query(sort: \VaultItem.sortOrder) private var items: [VaultItem]
     @Environment(VaultSession.self) private var session
     @AppStorage("faceIDEnabled") private var faceIDEnabled = false
+    @AppStorage("vaultShowValues") private var showValues = false
+    @AppStorage("clipboardSeconds") private var clipboardSeconds = 60
+    @AppStorage("vaultTimeout") private var vaultTimeout = 180
+    @State private var decrypted: [DecryptedVaultItem] = []
+    @State private var loading = false
     @State private var showPin = false
     @State private var showEditor = false
     @State private var newKind: VaultKind = .passport
-    @State private var error: String?
+    @State private var search = ""
+    @State private var copiedID: UUID?
 
-    private var decrypted: [DecryptedVaultItem] {
-        items.compactMap { i in
-            guard let p = try? VaultCrypto.open(i.payload) else { return nil }
-            return DecryptedVaultItem(id: i.id, item: i, kind: VaultKind(rawValue: i.kindRaw) ?? .custom, payload: p)
+    private var signature: String {
+        items.map { "\($0.id.uuidString)\($0.updatedAt.timeIntervalSince1970)" }.joined()
+    }
+
+    private var filtered: [DecryptedVaultItem] {
+        let q = search.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return decrypted }
+        return decrypted.filter { d in
+            d.payload.title.lowercased().contains(q) || d.kind.title.lowercased().contains(q)
+                || d.payload.fields.contains { $0.value.lowercased().contains(q) || $0.label.lowercased().contains(q) }
         }
     }
 
@@ -48,8 +129,22 @@ struct VaultView: View {
                         }
                     } label: { Image(systemName: "plus") }
                 }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { withAnimation { session.lock() } } label: { Image(systemName: "lock.fill") }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Toggle("Qiymatlarni ochiq ko'rsatish", isOn: $showValues)
+                        Picker("Nusxa buferda turadi", selection: $clipboardSeconds) {
+                            Text("1 daqiqa").tag(60)
+                            Text("5 daqiqa").tag(300)
+                            Text("15 daqiqa").tag(900)
+                            Text("O'chirilmasin").tag(0)
+                        }
+                        Picker("Seyf ochiq turadi", selection: $vaultTimeout) {
+                            Text("1 daqiqa").tag(60)
+                            Text("3 daqiqa").tag(180)
+                            Text("10 daqiqa").tag(600)
+                        }
+                        Button { withAnimation { session.lock() } } label: { Label("Seyfni yopish", systemImage: "lock.fill") }
+                    } label: { Image(systemName: "gearshape") }
                 }
             }
         }
@@ -62,6 +157,16 @@ struct VaultView: View {
         }
         .task {
             if !session.isUnlocked && faceIDEnabled { await unlockWithBiometrics() }
+        }
+        .task(id: "\(session.isUnlocked)\(signature)") {
+            guard session.isUnlocked else { decrypted = []; return }
+            loading = decrypted.isEmpty && !items.isEmpty
+            let inputs = items.map { ($0.id, $0.kindRaw, $0.payload, $0.updatedAt) }
+            let result = await VaultCache.decrypt(inputs)
+            withAnimation(.smooth(duration: 0.25)) {
+                decrypted = result
+                loading = false
+            }
         }
         .task {
             while !Task.isCancelled {
@@ -110,36 +215,35 @@ struct VaultView: View {
 
     private var unlockedList: some View {
         ScrollView {
-            VStack(spacing: 14) {
-                GlassCard(padding: 12, tint: Palette.income) {
-                    Label("Seyf ochiq · 3 daqiqa harakatsizlikdan keyin yoki ilova fonga o'tganda yopiladi",
-                          systemImage: "lock.open.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if decrypted.isEmpty {
+            LazyVStack(spacing: 14) {
+                if loading {
+                    ProgressView("Ochilmoqda…").padding(.top, 40)
+                } else if decrypted.isEmpty {
                     GlassCard {
                         ContentUnavailableView("Seyf bo'sh", systemImage: "tray",
                                                description: Text("Yuqoridagi + tugmasi orqali pasport, karta yoki boshqa hujjat qo'shing."))
                     }
+                } else if filtered.isEmpty {
+                    GlassCard { ContentUnavailableView.search(text: search) }
                 }
-                ForEach(Array(decrypted.enumerated()), id: \.element.id) { idx, d in
-                    NavigationLink {
-                        VaultDetailView(itemID: d.id)
-                    } label: {
-                        VaultCardRow(item: d)
+                ForEach(filtered) { d in
+                    VaultCardRow(item: d, showValues: showValues, copiedID: $copiedID) {
+                        session.touch()
                     }
-                    .buttonStyle(.plain)
-                    .appearAnimation(idx)
                 }
-                if items.count > decrypted.count {
+                if !loading && items.count > decrypted.count {
                     Text("\(items.count - decrypted.count) ta yozuvni ochib bo'lmadi (kalit topilmadi).")
                         .font(.caption).foregroundStyle(Palette.expense)
                 }
+                Text("Nusxa olish uchun qiymatni bosing. Karta raqami bo'shliqsiz nusxalanadi.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
             }
             .padding(.horizontal)
             .padding(.bottom, 32)
         }
+        .searchable(text: $search, prompt: "Hujjat yoki raqam bo'yicha qidirish")
         .simultaneousGesture(TapGesture().onEnded { session.touch() })
     }
 
@@ -152,68 +256,125 @@ struct VaultView: View {
 
 struct VaultCardRow: View {
     let item: DecryptedVaultItem
+    let showValues: Bool
+    @Binding var copiedID: UUID?
+    let onInteract: () -> Void
 
-    private var subtitle: String {
-        if item.kind == .bankCard, let n = item.payload.fields.first(where: { $0.label.hasPrefix("Karta raqami") })?.value,
-           n.count >= 4 {
-            return "•••• \(n.filter(\.isNumber).suffix(4))"
-        }
-        if let exp = item.payload.expiry {
-            return exp < Date() ? "Muddati o'tgan" : "Amal qiladi: \(exp.uzDate)"
-        }
-        return item.kind.title
-    }
+    private var expired: Bool { (item.payload.expiry ?? .distantFuture) < Date() }
 
     var body: some View {
         GlassCard(padding: 14, tint: Color(hex: item.kind.colorHex)) {
-            HStack(spacing: 14) {
-                IconBadge(icon: item.kind.icon, color: Color(hex: item.kind.colorHex), size: 46)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item.payload.title.isEmpty ? item.kind.title : item.payload.title)
-                        .font(.headline)
-                        .lineLimit(1)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle((item.payload.expiry ?? .distantFuture) < Date() ? Palette.expense : Color.secondary)
+            VStack(alignment: .leading, spacing: 12) {
+                NavigationLink {
+                    VaultDetailView(item: item)
+                } label: {
+                    HStack(spacing: 14) {
+                        IconBadge(icon: item.kind.icon, color: Color(hex: item.kind.colorHex), size: 44)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.payload.title.isEmpty ? item.kind.title : item.payload.title)
+                                .font(.headline)
+                                .lineLimit(1)
+                            Group {
+                                if let exp = item.payload.expiry {
+                                    Text(expired ? "Muddati o'tgan: \(exp.uzDate)" : "Amal qiladi: \(exp.uzDate)")
+                                } else {
+                                    Text(item.kind.title)
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(expired ? Palette.expense : Color.secondary)
+                        }
+                        Spacer()
+                        if !item.payload.images.isEmpty {
+                            Label("\(item.payload.images.count)", systemImage: "photo")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
                 }
-                Spacer()
-                if !item.payload.images.isEmpty {
-                    Label("\(item.payload.images.count)", systemImage: "photo").font(.caption).foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+
+                let quick = VaultText.quickFields(item)
+                if !quick.isEmpty {
+                    VStack(spacing: 8) {
+                        ForEach(quick) { f in
+                            copyChip(f)
+                        }
+                    }
                 }
-                Image(systemName: "chevron.right").foregroundStyle(.tertiary)
             }
         }
+    }
+
+    private func copyChip(_ f: VaultField) -> some View {
+        let copied = copiedID == f.id
+        return Button {
+            SecureClipboard.copy(VaultText.copyValue(f))
+            onInteract()
+            withAnimation(.snappy) { copiedID = f.id }
+            Task {
+                try? await Task.sleep(for: .seconds(1.6))
+                if copiedID == f.id { withAnimation(.snappy) { copiedID = nil } }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Text(VaultText.shortLabel(f))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 62, alignment: .leading)
+                Text(showValues || !f.secret
+                     ? (VaultText.isCardNumber(f) ? VaultText.grouped(f.value) : f.value)
+                     : VaultText.masked(f))
+                    .font(.subheadline.monospaced().weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 4)
+                Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
+                    .foregroundStyle(copied ? Palette.income : Palette.accent)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(Color.primary.opacity(0.07), in: .rect(cornerRadius: 12))
+            .contentShape(.rect(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
     }
 }
 
 struct VaultDetailView: View {
-    let itemID: UUID
+    let item: DecryptedVaultItem
     @Query private var items: [VaultItem]
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Environment(VaultSession.self) private var session
+    @AppStorage("vaultShowValues") private var showValues = false
     @State private var revealed: Set<UUID> = []
     @State private var showEdit = false
     @State private var confirmDelete = false
     @State private var zoom: ImageBox?
+    @State private var copiedID: UUID?
+    @State private var copiedAll = false
+    @State private var current: DecryptedVaultItem?
 
-    private var item: VaultItem? { items.first { $0.id == itemID } }
-    private var payload: VaultPayload? { item.flatMap { try? VaultCrypto.open($0.payload) } }
-    private var kind: VaultKind { VaultKind(rawValue: item?.kindRaw ?? "") ?? .custom }
+    private var stored: VaultItem? { items.first { $0.id == item.id } }
+    private var cur: DecryptedVaultItem { current ?? item }
+    private var kind: VaultKind { cur.kind }
+    private var p: VaultPayload { cur.payload }
+    private var filled: [VaultField] { p.fields.filter { !$0.value.isEmpty } }
 
     var body: some View {
         Group {
             if !session.isUnlocked {
                 ContentUnavailableView("Seyf yopildi", systemImage: "lock.fill",
                                        description: Text("Xavfsizlik uchun seyf avtomatik yopildi. Orqaga qayting va qayta oching."))
-            } else if let payload {
-                content(payload)
             } else {
-                ContentUnavailableView("Yozuv topilmadi", systemImage: "questionmark.folder")
+                content
             }
         }
         .screenBackground()
-        .navigationTitle(payload?.title ?? kind.title)
+        .navigationTitle(p.title.isEmpty ? kind.title : p.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -224,16 +385,21 @@ struct VaultDetailView: View {
             }
         }
         .sheet(isPresented: $showEdit) {
-            if let item { VaultEditor(kind: kind, existing: item) }
+            if let stored { VaultEditor(kind: kind, existing: stored) }
+        }
+        .task(id: stored?.updatedAt) {
+            guard let s = stored, s.updatedAt != cur.updatedAt else { return }
+            let fresh = await VaultCache.decrypt([(s.id, s.kindRaw, s.payload, s.updatedAt)])
+            if let f = fresh.first { current = f }
         }
         .sheet(item: $zoom) { z in
             ZoomImageView(data: z.data)
         }
         .confirmationDialog("Yozuv butunlay o'chirilsinmi?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("O'chirish", role: .destructive) {
-                if let item {
-                    Notifier.cancel(["vault-\(item.id.uuidString)-30", "vault-\(item.id.uuidString)-7"])
-                    context.delete(item)
+                if let stored {
+                    Notifier.cancel(["vault-\(stored.id.uuidString)-30", "vault-\(stored.id.uuidString)-7"])
+                    context.delete(stored)
                     try? context.save()
                 }
                 dismiss()
@@ -241,7 +407,7 @@ struct VaultDetailView: View {
         }
     }
 
-    private func content(_ p: VaultPayload) -> some View {
+    private var content: some View {
         ScrollView {
             VStack(spacing: 14) {
                 GlassCard(padding: 18, tint: Color(hex: kind.colorHex)) {
@@ -260,11 +426,28 @@ struct VaultDetailView: View {
                     }
                 }
 
+                Button {
+                    SecureClipboard.copy(VaultText.allText(cur))
+                    session.touch()
+                    withAnimation(.snappy) { copiedAll = true }
+                    Task {
+                        try? await Task.sleep(for: .seconds(1.6))
+                        withAnimation(.snappy) { copiedAll = false }
+                    }
+                } label: {
+                    Label(copiedAll ? "Nusxalandi" : "Hammasini nusxalash",
+                          systemImage: copiedAll ? "checkmark.circle.fill" : "doc.on.clipboard")
+                        .frame(maxWidth: .infinity)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.glassProminent)
+                .controlSize(.large)
+
                 GlassCard(padding: 6) {
                     VStack(spacing: 0) {
-                        ForEach(p.fields.filter { !$0.value.isEmpty }) { f in
+                        ForEach(filled) { f in
                             fieldRow(f)
-                            if f.id != p.fields.filter({ !$0.value.isEmpty }).last?.id {
+                            if f.id != filled.last?.id {
                                 Divider().opacity(0.35).padding(.leading, 12)
                             }
                         }
@@ -275,14 +458,10 @@ struct VaultDetailView: View {
                     GlassCard(padding: 10) {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                             ForEach(Array(p.images.enumerated()), id: \.offset) { _, data in
-                                if let ui = UIImage(data: data) {
-                                    Image(uiImage: ui)
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(height: 120)
-                                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                                        .onTapGesture { zoom = ImageBox(data: data) }
-                                }
+                                ThumbnailView(data: data)
+                                    .frame(height: 120)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                                    .onTapGesture { zoom = ImageBox(data: data) }
                             }
                         }
                     }
@@ -296,11 +475,6 @@ struct VaultDetailView: View {
                         }
                     }
                 }
-
-                Text("Nusxa olingan qiymat 60 soniyadan keyin bufer xotiradan avtomatik o'chadi va boshqa qurilmalarga sinxronlanmaydi.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
             }
             .padding(.horizontal)
             .padding(.bottom, 32)
@@ -309,33 +483,41 @@ struct VaultDetailView: View {
     }
 
     private func display(_ f: VaultField) -> String {
-        if !f.secret || revealed.contains(f.id) {
-            if f.label.hasPrefix("Karta raqami") { return grouped(f.value) }
-            return f.value
+        if showValues || !f.secret || revealed.contains(f.id) {
+            return VaultText.isCardNumber(f) ? VaultText.grouped(f.value) : f.value
         }
-        if f.label.hasPrefix("Karta raqami") {
-            return "•••• •••• •••• " + String(f.value.filter(\.isNumber).suffix(4))
-        }
-        return String(repeating: "•", count: min(max(f.value.count, 6), 14))
-    }
-
-    private func grouped(_ v: String) -> String {
-        let digits = Array(v.filter(\.isNumber))
-        guard digits.count >= 12 else { return v }
-        return stride(from: 0, to: digits.count, by: 4).map { String(digits[$0..<min($0 + 4, digits.count)]) }.joined(separator: " ")
+        return VaultText.masked(f)
     }
 
     private func fieldRow(_ f: VaultField) -> some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(f.label).font(.caption).foregroundStyle(.secondary)
-                Text(display(f))
-                    .font(.body.monospaced().weight(.semibold))
-                    .contentTransition(.interpolate)
-                    .textSelection(.disabled)
+        let copied = copiedID == f.id
+        return HStack(spacing: 10) {
+            Button {
+                SecureClipboard.copy(VaultText.copyValue(f))
+                session.touch()
+                withAnimation(.snappy) { copiedID = f.id }
+                Task {
+                    try? await Task.sleep(for: .seconds(1.6))
+                    if copiedID == f.id { withAnimation(.snappy) { copiedID = nil } }
+                }
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(f.label).font(.caption).foregroundStyle(.secondary)
+                        Text(display(f))
+                            .font(.body.monospaced().weight(.semibold))
+                            .contentTransition(.interpolate)
+                    }
+                    Spacer()
+                    Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
+                        .foregroundStyle(copied ? Palette.income : Palette.accent)
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 30, height: 30)
+                }
+                .contentShape(Rectangle())
             }
-            Spacer()
-            if f.secret {
+            .buttonStyle(.plain)
+            if f.secret && !showValues {
                 Button {
                     withAnimation(.snappy) {
                         if revealed.contains(f.id) { revealed.remove(f.id) } else { revealed.insert(f.id) }
@@ -347,15 +529,30 @@ struct VaultDetailView: View {
                 }
                 .buttonStyle(.plain)
             }
-            Button {
-                SecureClipboard.copy(f.value)
-                session.touch()
-            } label: {
-                Image(systemName: "doc.on.doc").frame(width: 30, height: 30)
-            }
-            .buttonStyle(.plain)
         }
         .padding(12)
+    }
+}
+
+struct ThumbnailView: View {
+    let data: Data
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            Color.primary.opacity(0.08)
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                ProgressView()
+            }
+        }
+        .task {
+            let d = data
+            image = await Task.detached(priority: .userInitiated) {
+                UIImage(data: d)?.preparingThumbnail(of: CGSize(width: 400, height: 400))
+            }.value
+        }
     }
 }
 
@@ -370,7 +567,7 @@ struct ZoomImageView: View {
     @State private var scale: CGFloat = 1
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .top) {
             Color.black.ignoresSafeArea()
             if let ui = UIImage(data: data) {
                 Image(uiImage: ui)
@@ -380,12 +577,20 @@ struct ZoomImageView: View {
                     .gesture(MagnifyGesture().onChanged { scale = max(1, $0.magnification) }.onEnded { _ in
                         withAnimation(.spring) { scale = 1 }
                     })
+                    .frame(maxHeight: .infinity)
+                HStack {
+                    ShareLink(item: Image(uiImage: ui), preview: SharePreview("Hujjat rasmi", image: Image(uiImage: ui))) {
+                        Image(systemName: "square.and.arrow.up").font(.headline).frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.glass)
+                    Spacer()
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark").font(.headline).frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.glass)
+                }
+                .padding()
             }
-            Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.headline).frame(width: 36, height: 36)
-            }
-            .buttonStyle(.glass)
-            .padding()
         }
     }
 }
@@ -458,24 +663,21 @@ struct VaultEditor: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack {
                                 ForEach(Array(images.enumerated()), id: \.offset) { idx, data in
-                                    if let ui = UIImage(data: data) {
-                                        Image(uiImage: ui)
-                                            .resizable().scaledToFill()
-                                            .frame(width: 90, height: 64)
-                                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                                            .overlay(alignment: .topTrailing) {
-                                                Button { images.remove(at: idx) } label: {
-                                                    Image(systemName: "xmark.circle.fill").foregroundStyle(.white, .black.opacity(0.6))
-                                                }
-                                                .buttonStyle(.plain)
-                                                .padding(2)
+                                    ThumbnailView(data: data)
+                                        .frame(width: 90, height: 64)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                        .overlay(alignment: .topTrailing) {
+                                            Button { images.remove(at: idx) } label: {
+                                                Image(systemName: "xmark.circle.fill").foregroundStyle(.white, .black.opacity(0.6))
                                             }
-                                    }
+                                            .buttonStyle(.plain)
+                                            .padding(2)
+                                        }
                                 }
                             }
                         }
                     }
-                    PhotosPicker(selection: $pickerItems, maxSelectionCount: 4, matching: .images) {
+                    PhotosPicker(selection: $pickerItems, maxSelectionCount: 10, matching: .images) {
                         Label("Galereyadan qo'shish", systemImage: "photo.on.rectangle")
                     }
                     if UIImagePickerController.isSourceTypeAvailable(.camera) {

@@ -42,7 +42,7 @@ struct PaymentDTO: Codable {
 }
 
 struct BudgetDTO: Codable {
-    var id: UUID; var category: String; var limit: Double; var createdAt: Date
+    var id: UUID; var category: String; var limit: Double; var createdAt: Date; var period: String?
 }
 
 struct GoalDTO: Codable {
@@ -88,7 +88,7 @@ enum BackupManager {
             PaymentDTO(id: p.id, debtID: p.debtID, amount: p.amount, date: p.date, accountID: p.accountID, note: p.note)
         }
         let budgets: [BudgetDTO] = fetchAll(Budget.self, ctx).map { b in
-            BudgetDTO(id: b.id, category: b.categoryName, limit: b.limit, createdAt: b.createdAt)
+            BudgetDTO(id: b.id, category: b.categoryName, limit: b.limit, createdAt: b.createdAt, period: b.periodRaw)
         }
         let goals: [GoalDTO] = fetchAll(Goal.self, ctx).map { g in
             GoalDTO(id: g.id, name: g.name, icon: g.icon, color: g.colorHex, target: g.target,
@@ -168,7 +168,7 @@ enum BackupManager {
             ctx.insert(m)
         }
         for x in b.budgets {
-            let m = Budget(categoryName: x.category, limit: x.limit)
+            let m = Budget(categoryName: x.category, limit: x.limit, period: BudgetPeriod(rawValue: x.period ?? "month") ?? .month)
             m.id = x.id; m.createdAt = x.createdAt
             ctx.insert(m)
         }

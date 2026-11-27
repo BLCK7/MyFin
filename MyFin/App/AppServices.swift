@@ -156,13 +156,25 @@ final class OverlayWindow {
         hideTask?.cancel()
         if visible {
             ensureWindow()
+            window?.isUserInteractionEnabled = true
             window?.isHidden = false
         } else {
+            // Stop catching touches right away; hide after the fade-out finishes.
+            window?.isUserInteractionEnabled = false
+            restoreMainWindow()
             hideTask = Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(450))
+                try? await Task.sleep(for: .milliseconds(420))
                 guard !Task.isCancelled else { return }
                 self.window?.isHidden = true
+                self.restoreMainWindow()
             }
+        }
+    }
+
+    private func restoreMainWindow() {
+        guard let scene = window?.windowScene else { return }
+        if let main = scene.windows.first(where: { $0 !== window && !$0.isHidden }), !main.isKeyWindow {
+            main.makeKey()
         }
     }
 

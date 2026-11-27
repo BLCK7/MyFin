@@ -37,7 +37,7 @@ enum Money {
 
     static func decimals(_ code: String) -> Int { code == "UZS" ? 0 : 2 }
 
-    static func number(_ value: Double, decimals: Int) -> String {
+    private static func makeFormatter(_ decimals: Int) -> NumberFormatter {
         let f = NumberFormatter()
         f.numberStyle = .decimal
         f.groupingSeparator = " "
@@ -45,6 +45,15 @@ enum Money {
         f.usesGroupingSeparator = true
         f.maximumFractionDigits = decimals
         f.minimumFractionDigits = 0
+        return f
+    }
+
+    private static let formatter0 = makeFormatter(0)
+    private static let formatter1 = makeFormatter(1)
+    private static let formatter2 = makeFormatter(2)
+
+    static func number(_ value: Double, decimals: Int) -> String {
+        let f = decimals == 0 ? formatter0 : (decimals == 1 ? formatter1 : formatter2)
         return f.string(from: NSNumber(value: value)) ?? "0"
     }
 

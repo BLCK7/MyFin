@@ -13,29 +13,32 @@ struct BudgetRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                IconBadge(icon: category?.icon ?? "tag.fill", color: Color(hex: category?.colorHex ?? "#94A3B8"), size: 32)
-                Text(budget.categoryName).font(.subheadline.weight(.semibold)).lineLimit(1)
+                IconBadge(icon: budget.isOverall ? "sum" : (category?.icon ?? "tag.fill"),
+                          color: budget.isOverall ? Palette.accent : Color(hex: category?.colorHex ?? "#94A3B8"), size: 32)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(budget.displayName).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Text(budget.period.title).font(.caption2).foregroundStyle(.secondary)
+                }
                 Spacer()
                 AmountText(value: spent, currency: base, font: .caption.weight(.bold), color: color)
                 Text("/").font(.caption).foregroundStyle(.secondary)
                 AmountText(value: budget.limit, currency: base, font: .caption)
             }
             ProgressCapsule(progress: ratio, color: color, height: 7)
-            if ratio >= 1 {
-                HStack(spacing: 4) {
+            HStack(spacing: 4) {
+                if ratio >= 1 {
                     Text("Limitdan oshdi:")
                     AmountText(value: spent - budget.limit, currency: base, font: .caption2.weight(.semibold), color: Palette.expense)
-                }
-                .font(.caption2)
-                .foregroundStyle(Palette.expense)
-            } else {
-                HStack(spacing: 4) {
+                } else {
                     Text("Qoldi:")
                     AmountText(value: budget.limit - spent, currency: base, font: .caption2.weight(.semibold))
+                    Text("· kuniga")
+                    AmountText(value: FinanceEngine.safeDaily(budget: budget, spent: spent), currency: base,
+                               font: .caption2.weight(.semibold), color: Palette.income)
                 }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
             }
+            .font(.caption2)
+            .foregroundStyle(ratio >= 1 ? Palette.expense : Color.secondary)
         }
     }
 }
@@ -47,20 +50,31 @@ struct BudgetsView: View {
     @Environment(\.modelContext) private var context
     @Environment(RateStore.self) private var rates
     @AppStorage("baseCurrency") private var base = "UZS"
+    @State private var period: BudgetPeriod = .month
     @State private var showAdd = false
     @State private var editing: Budget?
 
-    private var totalLimit: Double { budgets.reduce(0) { $0 + $1.limit } }
-    private var totalSpent: Double {
-        budgets.reduce(0) { $0 + FinanceEngine.spent(category: $1.categoryName, transactions: transactions, rates: rates, base: base) }
-    }
-
     var body: some View {
-        ScrollView {
+        let list = budgets.filter { $0.period == period }.sorted { $0.isOverall && !$1.isOverall }
+        let overall = list.first(where: \.isOverall)
+        let spentMap = Dictionary(list.map { ($0.id, FinanceEngine.spent(budget: $0, transactions: transactions, rates: rates, base: base)) },
+                                  uniquingKeysWith: { a, _ in a })
+        let totalLimit = overall?.limit ?? list.reduce(0) { $0 + $1.limit }
+        let totalSpent = overall.flatMap { spentMap[$0.id] } ?? list.reduce(0) { $0 + (spentMap[$1.id] ?? 0) }
+        let range = period.interval()
+        let days = max(1, Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: Date()), to: range.end).day ?? 1)
+
+        return ScrollView {
             VStack(spacing: 16) {
+                Picker("Davr", selection: $period.animation(.snappy)) {
+                    ForEach(BudgetPeriod.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+
                 GlassCard(padding: 18, tint: Palette.warning) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("\(Date().uzMonthYear) byudjeti").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                        Text(period == .month ? "\(Date().uzMonthYear) limiti" : "Shu hafta limiti (\(range.start.uzDate) dan)")
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             AmountText(value: totalSpent, currency: base, font: .title.weight(.bold))
                             Text("/").foregroundStyle(.secondary)
@@ -68,19 +82,30 @@ struct BudgetsView: View {
                         }
                         ProgressCapsule(progress: totalLimit > 0 ? totalSpent / totalLimit : 0,
                                         color: totalSpent > totalLimit ? Palette.expense : Palette.warning)
+                        if totalLimit > 0 {
+                            HStack(spacing: 4) {
+                                Image(systemName: "sun.max.fill").foregroundStyle(Palette.warning)
+                                Text("Bugundan boshlab kuniga:")
+                                AmountText(value: max(0, totalLimit - totalSpent) / Double(days), currency: base,
+                                           font: .subheadline.weight(.bold), color: Palette.income)
+                                Text("· \(days) kun qoldi").foregroundStyle(.secondary)
+                            }
+                            .font(.subheadline)
+                        }
                     }
                 }
-                if budgets.isEmpty {
+
+                if list.isEmpty {
                     GlassCard {
-                        ContentUnavailableView("Byudjet yo'q", systemImage: "gauge.with.dots.needle.33percent",
-                                               description: Text("Kategoriyalar uchun oylik limit belgilang. 80% va 100% ga yetganda bildirishnoma keladi."))
+                        ContentUnavailableView(period == .month ? "Oylik limit yo'q" : "Haftalik limit yo'q",
+                                               systemImage: "gauge.with.dots.needle.33percent",
+                                               description: Text("Barcha xarajatlar yoki alohida kategoriya uchun limit qo'ying. 80% va 100% da ogohlantirish keladi."))
                     }
                 } else {
                     GlassCard {
                         VStack(spacing: 18) {
-                            ForEach(budgets) { b in
-                                BudgetRow(budget: b,
-                                          spent: FinanceEngine.spent(category: b.categoryName, transactions: transactions, rates: rates, base: base),
+                            ForEach(list) { b in
+                                BudgetRow(budget: b, spent: spentMap[b.id] ?? 0,
                                           category: categories.first { $0.name == b.categoryName }, base: base)
                                     .contentShape(Rectangle())
                                     .onTapGesture { editing = b }
@@ -88,6 +113,7 @@ struct BudgetsView: View {
                                         Button(role: .destructive) {
                                             context.delete(b)
                                             try? context.save()
+                                            WidgetSync.schedule(context)
                                         } label: { Label("O'chirish", systemImage: "trash") }
                                     }
                             }
@@ -99,79 +125,118 @@ struct BudgetsView: View {
             .padding(.bottom, 32)
         }
         .screenBackground()
-        .navigationTitle("Byudjetlar")
+        .navigationTitle("Limitlar")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showAdd = true } label: { Image(systemName: "plus") }
             }
         }
-        .sheet(isPresented: $showAdd) { BudgetEditor(existing: nil) }
-        .sheet(item: $editing) { BudgetEditor(existing: $0) }
+        .sheet(isPresented: $showAdd) { BudgetEditor(existing: nil, presetPeriod: period) }
+        .sheet(item: $editing) { BudgetEditor(existing: $0, presetPeriod: $0.period) }
         .task { _ = await Notifier.requestAuthorization() }
     }
 }
 
 struct BudgetEditor: View {
     let existing: Budget?
+    var presetPeriod: BudgetPeriod = .month
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     @Query(sort: \FinCategory.sortOrder) private var categories: [FinCategory]
     @Query private var budgets: [Budget]
     @AppStorage("baseCurrency") private var base = "UZS"
+    @State private var period: BudgetPeriod = .month
+    @State private var overall = true
     @State private var category = ""
     @State private var limitText = ""
     @State private var loaded = false
 
     private var available: [FinCategory] {
         categories.filter { c in
-            c.kind == .expense && (c.name == existing?.categoryName || !budgets.contains { $0.categoryName == c.name })
+            c.kind == .expense && (c.name == existing?.categoryName
+                || !budgets.contains { $0.categoryName == c.name && $0.period == period })
         }
+    }
+
+    private var overallTaken: Bool {
+        budgets.contains { $0.isOverall && $0.period == period && $0.id != existing?.id }
+    }
+
+    private var valid: Bool {
+        (parseAmount(limitText) ?? 0) > 0 && (overall ? !overallTaken : !category.isEmpty)
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Oylik limit") {
+                Section {
+                    Picker("Davr", selection: $period) {
+                        ForEach(BudgetPeriod.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    Picker("Turi", selection: $overall.animation()) {
+                        Text("Barcha xarajatlar").tag(true)
+                        Text("Bitta kategoriya").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                } footer: {
+                    if overall && overallTaken {
+                        Text("Bu davr uchun umumiy limit allaqachon bor.").foregroundStyle(Palette.expense)
+                    }
+                }
+                Section(period == .month ? "Oylik limit" : "Haftalik limit") {
                     AmountField(title: "0", text: $limitText, currency: base)
                 }
-                Section("Kategoriya") {
-                    CategoryGrid(categories: available, selection: $category)
+                if !overall {
+                    Section("Kategoriya") {
+                        CategoryGrid(categories: available, selection: $category)
+                    }
                 }
                 if let existing {
                     Section {
-                        Button("Byudjetni o'chirish", role: .destructive) {
+                        Button("Limitni o'chirish", role: .destructive) {
                             context.delete(existing)
                             try? context.save()
+                            WidgetSync.schedule(context)
                             dismiss()
                         }
                     }
                 }
             }
-            .navigationTitle(existing == nil ? "Yangi byudjet" : "Byudjet")
+            .navigationTitle(existing == nil ? "Yangi limit" : "Limit")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Bekor") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Saqlash") {
-                        guard let limit = parseAmount(limitText), limit > 0, !category.isEmpty else { return }
+                        guard let limit = parseAmount(limitText), limit > 0 else { return }
+                        let name = overall ? "" : category
                         if let existing {
-                            existing.categoryName = category
+                            existing.categoryName = name
                             existing.limit = limit
+                            existing.period = period
                         } else {
-                            context.insert(Budget(categoryName: category, limit: limit))
+                            context.insert(Budget(categoryName: name, limit: limit, period: period))
                         }
                         try? context.save()
+                        WidgetSync.schedule(context)
+                        Haptics.success()
                         dismiss()
                     }
-                    .disabled(category.isEmpty || (parseAmount(limitText) ?? 0) <= 0)
+                    .disabled(!valid)
                 }
             }
             .onAppear {
                 guard !loaded else { return }
                 loaded = true
+                period = presetPeriod
                 if let existing {
+                    period = existing.period
+                    overall = existing.isOverall
                     category = existing.categoryName
                     limitText = String(Int(existing.limit))
+                } else {
+                    overall = !budgets.contains { $0.isOverall && $0.period == presetPeriod }
                 }
             }
         }

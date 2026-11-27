@@ -193,19 +193,50 @@ final class DebtPayment {
     }
 }
 
+enum BudgetPeriod: String, CaseIterable, Identifiable {
+    case month, week
+
+    var id: String { rawValue }
+    var title: String { self == .month ? "Oylik" : "Haftalik" }
+
+    func interval(containing date: Date = Date()) -> DateInterval {
+        var cal = Calendar(identifier: .gregorian)
+        cal.firstWeekday = 2
+        cal.timeZone = .current
+        let component: Calendar.Component = self == .month ? .month : .weekOfYear
+        return cal.dateInterval(of: component, for: date) ?? DateInterval(start: date, duration: 86_400)
+    }
+
+    func key(_ date: Date = Date()) -> String {
+        let start = interval(containing: date).start
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: start)
+        return "\(rawValue)-\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)"
+    }
+}
+
 @Model
 final class Budget {
     var id: UUID = UUID()
     var categoryName: String = ""
     var limit: Double = 0
+    var periodRaw: String = BudgetPeriod.month.rawValue
     var createdAt: Date = Date()
 
-    init(categoryName: String, limit: Double) {
+    init(categoryName: String, limit: Double, period: BudgetPeriod = .month) {
         self.id = UUID()
         self.categoryName = categoryName
         self.limit = limit
+        self.periodRaw = period.rawValue
         self.createdAt = Date()
     }
+
+    var period: BudgetPeriod {
+        get { BudgetPeriod(rawValue: periodRaw) ?? .month }
+        set { periodRaw = newValue.rawValue }
+    }
+
+    var isOverall: Bool { categoryName.isEmpty }
+    var displayName: String { isOverall ? "Barcha xarajatlar" : categoryName }
 }
 
 @Model

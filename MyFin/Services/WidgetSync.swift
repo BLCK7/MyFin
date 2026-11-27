@@ -43,7 +43,8 @@ enum WidgetSync {
             netWorth: s.netWorth, totalBalance: s.totalAssets,
             todayExpense: todayExp, todayIncome: todayInc,
             monthIncome: s.monthIncome, monthExpense: s.monthExpense,
-            budgetLimit: budgets.reduce(0) { $0 + $1.limit },
+            budgetLimit: budgets.first(where: { $0.isOverall && $0.period == .month })?.limit
+                ?? budgets.filter { $0.period == .month }.reduce(0) { $0 + $1.limit },
             pendingReview: txs.filter(\.needsReview).count,
             accounts: accounts.prefix(6).map {
                 WidgetSnapshot.Acc(id: $0.id.uuidString, name: $0.name, last4: $0.cardLast4, balance: $0.balance,

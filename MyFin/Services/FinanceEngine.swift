@@ -77,6 +77,22 @@ enum FinanceEngine {
         .sorted { $0.amount > $1.amount }
     }
 
+    static func spent(budget: Budget, transactions: [FinTransaction], rates: RateStore, base: String) -> Double {
+        let range = budget.period.interval()
+        return transactions
+            .filter { $0.kind == .expense && range.contains($0.date) && (budget.isOverall || $0.categoryName == budget.categoryName) }
+            .reduce(0) { $0 + rates.convert($1.amount, from: $1.currency, to: base) }
+    }
+
+    /// How much can still be spent per day until the period ends without crossing the limit.
+    static func safeDaily(budget: Budget, spent: Double) -> Double {
+        let range = budget.period.interval()
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let days = max(1, (cal.dateComponents([.day], from: today, to: range.end).day ?? 1))
+        return max(0, budget.limit - spent) / Double(days)
+    }
+
     static func spent(category: String, transactions: [FinTransaction], rates: RateStore, base: String, month: Date = Date()) -> Double {
         let cal = Calendar.current
         return transactions
@@ -152,23 +168,26 @@ enum FinanceEngine {
     // MARK: Budgets
 
     static func checkBudget(category: String, ctx: ModelContext) {
-        guard !category.isEmpty else { return }
         let budgets = (try? ctx.fetch(FetchDescriptor<Budget>())) ?? []
-        guard let b = budgets.first(where: { $0.categoryName == category }), b.limit > 0 else { return }
+        let relevant = budgets.filter { $0.limit > 0 && ($0.isOverall || (!category.isEmpty && $0.categoryName == category)) }
+        guard !relevant.isEmpty else { return }
         let txs = (try? ctx.fetch(FetchDescriptor<FinTransaction>())) ?? []
         let base = UserDefaults.standard.string(forKey: "baseCurrency") ?? "UZS"
-        let used = spent(category: category, transactions: txs, rates: RateStore.shared, base: base)
-        let ratio = used / b.limit
-        let key = "budgetAlert-\(category)-\(RecurringPayment.monthKey())"
-        let level = ratio >= 1 ? 2 : (ratio >= 0.8 ? 1 : 0)
-        let previous = UserDefaults.standard.integer(forKey: key)
-        guard level > previous else { return }
-        UserDefaults.standard.set(level, forKey: key)
-        let body = "\(category): \(Money.format(used, base)) / \(Money.format(b.limit, base))"
-        if level == 2 {
-            Notifier.notifyNow(title: "Byudjet oshib ketdi", body: body)
-        } else {
-            Notifier.notifyNow(title: "Byudjet 80% ga yetdi", body: body)
+        for b in relevant {
+            let used = spent(budget: b, transactions: txs, rates: RateStore.shared, base: base)
+            let ratio = used / b.limit
+            let key = "budgetAlert-\(b.id.uuidString)-\(b.period.key())"
+            let level = ratio >= 1 ? 2 : (ratio >= 0.8 ? 1 : 0)
+            let previous = UserDefaults.standard.integer(forKey: key)
+            guard level > previous else { continue }
+            UserDefaults.standard.set(level, forKey: key)
+            let name = "\(b.period.title) limit · \(b.displayName)"
+            let body = "\(Money.format(used, base)) / \(Money.format(b.limit, base))"
+            if level == 2 {
+                Notifier.notifyNow(title: "\(name) oshib ketdi", body: body)
+            } else {
+                Notifier.notifyNow(title: "\(name): 80% ishlatildi", body: body + ". Kuniga ~\(Money.format(safeDaily(budget: b, spent: used), base)) qoldi.")
+            }
         }
     }
 

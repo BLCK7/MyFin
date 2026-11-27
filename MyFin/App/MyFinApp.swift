@@ -65,7 +65,7 @@ struct RootView: View {
             SeedData.seedIfNeeded(context)
             pinSet = PasscodeStore.isSet
             Notifier.registerReviewCategories(context)
-            try? await Task.sleep(for: .milliseconds(1900))
+            try? await Task.sleep(for: .milliseconds(1600))
             overlay.showSplash = false
             await rates.refreshIfStale()
             WidgetSync.refresh(context)
@@ -83,8 +83,8 @@ struct RootView: View {
             }
             overlay.privacy = onboarded && !lock.isLocked && phase != .active
         }
-        .onChange(of: lock.isLocked) { _, _ in
-            overlay.privacy = onboarded && !lock.isLocked && scenePhase != .active
+        .onChange(of: lock.isLocked) { _, locked in
+            if !locked { overlay.privacy = false }
         }
         .onOpenURL { router.handle($0) }
     }

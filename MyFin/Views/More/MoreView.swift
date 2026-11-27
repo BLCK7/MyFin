@@ -13,7 +13,7 @@ struct MoreView: View {
                 VStack(spacing: 14) {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                         tile("Tahlil", "chart.bar.xaxis", "#7C8CFF", "Oylik dinamika") { AnalyticsView() }
-                        tile("Byudjetlar", "gauge.with.dots.needle.67percent", "#F59E0B", "\(budgets.count) ta limit") { BudgetsView() }
+                        tile("Limitlar", "gauge.with.dots.needle.67percent", "#F59E0B", "Oylik va haftalik") { BudgetsView() }
                         tile("Maqsadlar", "target", "#8B5CF6", "\(goals.count) ta maqsad") { GoalsView() }
                         tile("Doimiy to'lovlar", "repeat.circle.fill", "#06B6D4", "\(recurring.count) ta to'lov") { RecurringView() }
                         tile("Kategoriyalar", "square.grid.3x3.fill", "#EC4899", "Tahrirlash") { CategoriesView() }
@@ -96,7 +96,8 @@ struct MoreView: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 24))
+            .glassEffect(.regular, in: .rect(cornerRadius: 24))
+            .contentShape(.rect(cornerRadius: 24))
         }
         .buttonStyle(.plain)
     }

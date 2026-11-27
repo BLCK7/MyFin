@@ -157,16 +157,23 @@ final class VaultSession {
         return u > Date()
     }
 
-    func unlock() { unlockedUntil = Date().addingTimeInterval(180) }
-    func touch() { if isUnlocked { unlockedUntil = Date().addingTimeInterval(180) } }
+    private var timeout: TimeInterval {
+        let v = UserDefaults.standard.integer(forKey: "vaultTimeout")
+        return TimeInterval(v > 0 ? v : 180)
+    }
+
+    func unlock() { unlockedUntil = Date().addingTimeInterval(timeout) }
+    func touch() { if isUnlocked { unlockedUntil = Date().addingTimeInterval(timeout) } }
     func lock() { unlockedUntil = nil }
 }
 
 enum SecureClipboard {
     @MainActor
-    static func copy(_ value: String, seconds: TimeInterval = 60) {
-        UIPasteboard.general.setItems([[UTType.plainText.identifier: value]],
-                                      options: [.expirationDate: Date().addingTimeInterval(seconds), .localOnly: true])
+    static func copy(_ value: String) {
+        let stored = UserDefaults.standard.object(forKey: "clipboardSeconds") as? Int ?? 60
+        var options: [UIPasteboard.OptionsKey: Any] = [.localOnly: true]
+        if stored > 0 { options[.expirationDate] = Date().addingTimeInterval(TimeInterval(stored)) }
+        UIPasteboard.general.setItems([[UTType.plainText.identifier: value]], options: options)
         Haptics.success()
     }
 }

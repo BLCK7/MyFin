@@ -32,14 +32,17 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        let summary = self.summary
+        let slices = self.slices
+        let pending = transactions.filter(\.needsReview)
+        return NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
                     NetWorthCard(summary: summary, base: base)
                         .appearAnimation(0)
                     MonthCard(summary: summary, base: base)
                         .appearAnimation(1)
-                    ReviewInboxCard(items: transactions.filter(\.needsReview), accounts: accounts,
+                    ReviewInboxCard(items: pending, accounts: accounts,
                                     categories: categories) { editing = $0 }
                     AccountsStrip(accounts: activeAccounts) { tab = .accounts }
                         .appearAnimation(2)
@@ -236,12 +239,12 @@ private struct BudgetPreview: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Byudjetlar")
+            SectionHeader(title: "Limitlar")
             GlassCard {
                 VStack(spacing: 14) {
-                    ForEach(budgets.prefix(4)) { b in
+                    ForEach(budgets.sorted { $0.isOverall && !$1.isOverall }.prefix(4)) { b in
                         BudgetRow(budget: b,
-                                  spent: FinanceEngine.spent(category: b.categoryName, transactions: transactions, rates: rates, base: base),
+                                  spent: FinanceEngine.spent(budget: b, transactions: transactions, rates: rates, base: base),
                                   category: categories.first { $0.name == b.categoryName },
                                   base: base)
                     }

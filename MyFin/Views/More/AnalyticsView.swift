@@ -26,9 +26,7 @@ struct AnalyticsView: View {
 
     private var points: [MonthPoint] {
         let cal = Calendar.current
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "uz_Latn_UZ")
-        f.dateFormat = "LLL"
+        let f = DateFormats.shortMonth
         var result: [MonthPoint] = []
         for m in monthStarts {
             var inc = 0.0, exp = 0.0
