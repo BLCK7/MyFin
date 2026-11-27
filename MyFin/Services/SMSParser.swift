@@ -20,7 +20,7 @@ enum SMSParser {
 
     static let expenseKeys = [
         "pokupka", "oplata", "spisan", "snyat", "debit", "xarid", "to'lov", "tolov", "to‘lov", "toʻlov",
-        "to’lov", "yechib", "yechildi", "kartadan", "perevod s", "perevod c", "o'tkazma", "otkazma",
+        "to’lov", "yechib", "yechildi", "yechish", "kartadan", "perevod s", "perevod c", "o'tkazma", "otkazma",
         "o‘tkazma", "oʻtkazma", "purchase", "payment", "withdraw", "to'landi", "tolandi", "to‘landi", "toʻlandi",
         "chiqim", "spent", "debited", "sotib", "yechilgan", "naqdlash",
         "покупк", "оплат", "списан", "снят", "перевод с"
@@ -36,7 +36,10 @@ enum SMSParser {
         "uzcard", "humo", "humocard", "balans", "ostatok", "qoldiq", "summa", "xarid", "to'lov", "tolov",
         "debit", "online", "onlayn", "spisanie", "zachislenie", "data", "vaqt", "sana", "uzs", "sum",
         "so'm", "som", "mavjud", "dostupno", "kirim", "chiqim", "otkazma", "o'tkazma", "kartadan",
-        "kartaga", "na kartu", "s karty", "c karti", "s karti", "operatsiya", "operaciya", "tranzaksiya"
+        "kartaga", "na kartu", "s karty", "c karti", "s karti", "operatsiya", "operaciya", "tranzaksiya",
+        "pul", "yechish", "yechildi", "kartangiz", "kartangizga", "kartangizdan", "to'ldirildi", "to‘ldirildi",
+        "toʻldirildi", "to’ldirildi", "hisobingiz", "hisobingizga", "muvaffaqiyatli", "qildingiz", "siz", "uchun",
+        "списание", "пополнение", "оплата", "покупка"
     ]
 
     private static let currencyPattern = #"(UZS|USD|EUR|RUB|SUM|SO['‘ʻ’`]?M|СУМ|СЎМ|\$|€|₽)"#
@@ -176,7 +179,16 @@ enum SMSParser {
         return best
     }
 
+    /// Name in quotes: Siz "UzMobile" uchun … → UzMobile
+    static func quoted(in text: String) -> String? {
+        guard let re = try? NSRegularExpression(pattern: #"["“«„]([^"”»“«\n]{2,40})["”»“]"#),
+              let m = re.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) else { return nil }
+        let v = (text as NSString).substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces)
+        return v.isEmpty ? nil : v
+    }
+
     static func merchant(in text: String) -> String {
+        if let q = quoted(in: text) { return q }
         var cleaned = text
         let removals = [
             "([+\\-−]?)\\s?" + numberPattern + "\\s?" + currencyPattern,
