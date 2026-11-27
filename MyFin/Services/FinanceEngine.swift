@@ -501,7 +501,15 @@ enum FinanceEngine {
         }
         if let balance = p.balance {
             let balCur = p.balanceCurrency ?? acc.currency
-            acc.balance = RateStore.shared.convert(balance, from: balCur, to: acc.currency)
+            let bankBalance = RateStore.shared.convert(balance, from: balCur, to: acc.currency)
+            let diff = bankBalance - acc.balance
+            let tolerance = acc.currency == "UZS" ? 1.0 : 0.01
+            let checkOn = UserDefaults.standard.object(forKey: "balanceCheck") as? Bool ?? true
+            if checkOn && !created && balCur == acc.currency && abs(diff) >= tolerance {
+                Notifier.postBalanceMismatch(account: acc, bank: bankBalance, local: acc.balance, diff: diff)
+                lines.append("⚠️ Balans mos emas — bankda \(Money.format(bankBalance, acc.currency)), MyFin'da \(Money.format(acc.balance, acc.currency)), farq \(Money.format(diff, acc.currency, signed: true)).")
+            }
+            acc.balance = bankBalance
             lines.append("\(acc.displayName) balansi: \(Money.format(acc.balance, acc.currency))")
         } else {
             lines.append("\(acc.displayName): \(Money.format(acc.balance, acc.currency))")
@@ -567,5 +575,20 @@ enum FinanceEngine {
         try? ctx.save()
         Notifier.postReview(tx, account: acc)
         return "\(merchant.isEmpty ? category : merchant): \(Money.format(-amount, currency, signed: true))\n\(acc.displayName): \(Money.format(acc.balance, acc.currency))"
+    }
+
+    /// Records the gap between MyFin and the bank balance as a transaction (balance itself is already synced).
+    @discardableResult
+    static func recordBalanceDifference(accountID: UUID, diff: Double, ctx: ModelContext) -> FinTransaction? {
+        guard let acc = account(accountID, in: ctx), abs(diff) > 0 else { return nil }
+        let kind: TxKind = diff < 0 ? .expense : .income
+        let tx = addTransaction(kind: kind, amount: abs(diff), currency: acc.currency, accountID: acc.id,
+                                category: kind == .expense ? "Boshqa xarajat" : "Boshqa kirim",
+                                merchant: "Hisobga olinmagan", note: "Bank balansi bilan farq",
+                                rawText: "Balans farqi", applyToBalance: false, ctx: ctx)
+        tx.needsReview = true
+        try? ctx.save()
+        Notifier.postReview(tx, account: acc)
+        return tx
     }
 }

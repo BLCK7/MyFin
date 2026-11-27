@@ -96,10 +96,14 @@ struct SettingsView: View {
                                      set: { UserDefaults.standard.set($0, forKey: "learnCategories") })) {
                     Label("Tanlovlarimdan o'rganish", systemImage: "brain")
                 }
+                Toggle(isOn: Binding(get: { UserDefaults.standard.object(forKey: "balanceCheck") as? Bool ?? true },
+                                     set: { UserDefaults.standard.set($0, forKey: "balanceCheck") })) {
+                    Label("Qoldiqni bank bilan solishtirish", systemImage: "checkmark.shield")
+                }
             } header: {
                 Text("Avtomatizatsiya")
             } footer: {
-                Text("SMS'da karta raqami bo'lmasa yoki mos karta topilmasa, shu hisob ishlatiladi.")
+                Text("SMS'da karta raqami bo'lmasa yoki mos karta topilmasa, shu hisob ishlatiladi. Xabardagi qoldiq MyFin'dagidan farq qilsa, bildirishnoma keladi.")
             }
 
             Section {
@@ -307,8 +311,9 @@ struct AutomationView: View {
                 step(3, "Ishlatish", "Bank yoki Wallet bildirishnomasi chiqqanda telefon orqasiga ikki marta tegining — MyFin ekrandagi summa, karta va do'konni o'qib, operatsiyani yozadi. Avtomatizatsiya ishlamay qolgan holatlar uchun zaxira usul.")
 
                 Text("Bank SMS").font(.headline).padding(.top, 4)
-                step(1, "Xabar triggeri", "Shortcuts → Avtomatizatsiya → “+” → “Xabar” (Message) → Jo'natuvchi: bank raqami (UZCARD, HUMO, 13131…) → “Darhol ishga tushirish”.")
-                step(2, "MyFin amali", "MyFin → “Bank SMS'ini yozish”. “SMS matni” = Qisqa buyruq kiritmasi → Kontent.")
+                step(1, "Xabar triggeri", "Shortcuts → Avtomatizatsiya → “+” → “Message” (When I receive a message) → Sender: bank jo'natuvchisi (TBC, HUMO, UZCARD, 900…). Jo'natuvchi ro'yxatda chiqmasa, “Message Contains” filtri: “karta”.")
+                step(2, "MyFin amali", "MyFin → “Bank SMS'ini yozish”. SMS matni = Message → Content (ko'k yorliq). Show When Run — o'chiq.")
+                step(3, "Operator SMS'larini ulamang", "UZTELECOM, Beeline, Ucell, Mobiuz SMS'lari telefon balansi haqida — karta emas. Ularni ulasangiz, to'lov ikki marta yoziladi.")
 
                 Text("Telegram bot (CardXabar, HUMO)").font(.headline).padding(.top, 4)
                 step(1, "Bildirishnoma triggeri", "Ilova: Telegram, sarlavhada “CardXabar” (yoki HUMO bot nomi) bo'lsa → “Darhol”. Amal: MyFin → “Bank bildirishnomasini yozish”, Matn = Body, Sarlavha = Title.")

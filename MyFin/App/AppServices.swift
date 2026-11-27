@@ -129,10 +129,14 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         let action = response.actionIdentifier
         let text = (response as? UNTextInputNotificationResponse)?.userText
         let idString = info["txID"] as? String
+        let balanceAccount = info["balanceAccountID"] as? String
+        let diff = info["diff"] as? Double
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
                 if let idString, let id = UUID(uuidString: idString) {
                     ReviewHandler.handle(txID: id, action: action, text: text)
+                } else if let balanceAccount, let id = UUID(uuidString: balanceAccount), let diff, action == "recordDiff" {
+                    FinanceEngine.recordBalanceDifference(accountID: id, diff: diff, ctx: DataStore.context)
                 }
             }
             completionHandler()

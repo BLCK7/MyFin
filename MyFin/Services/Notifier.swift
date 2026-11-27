@@ -120,6 +120,7 @@ enum Biometrics {
 extension Notifier {
     static let reviewExpenseCategory = "TX_REVIEW_EXP"
     static let reviewIncomeCategory = "TX_REVIEW_INC"
+    static let balanceMismatchCategory = "BAL_MISMATCH"
 
     @MainActor
     static func registerReviewCategories(_ context: ModelContext? = nil) {
@@ -141,7 +142,25 @@ extension Notifier {
                                          intentIdentifiers: [], options: [.customDismissAction])
         let inc = UNNotificationCategory(identifier: reviewIncomeCategory, actions: actions(.income),
                                          intentIdentifiers: [], options: [.customDismissAction])
-        UNUserNotificationCenter.current().setNotificationCategories([exp, inc])
+        let bal = UNNotificationCategory(
+            identifier: balanceMismatchCategory,
+            actions: [UNNotificationAction(identifier: "recordDiff", title: "Farqni operatsiya sifatida yozish", options: []),
+                      UNNotificationAction(identifier: "open", title: "Ochish", options: [.foreground])],
+            intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([exp, inc, bal])
+    }
+
+    @MainActor
+    static func postBalanceMismatch(account: Account, bank: Double, local: Double, diff: Double) {
+        let content = UNMutableNotificationContent()
+        content.title = "Balans mos emas · \(account.displayName)"
+        content.body = "Bankda: \(Money.format(bank, account.currency)) · MyFin'da: \(Money.format(local, account.currency)) · Farq: \(Money.format(diff, account.currency, signed: true)). Yozilmagan operatsiya bo'lishi mumkin. Balans bank bo'yicha yangilandi."
+        content.sound = .default
+        content.categoryIdentifier = balanceMismatchCategory
+        content.threadIdentifier = "balance-check"
+        content.userInfo = ["balanceAccountID": account.id.uuidString, "diff": diff]
+        UNUserNotificationCenter.current().add(UNNotificationRequest(
+            identifier: "balance-\(account.id.uuidString)", content: content, trigger: nil))
     }
 
     @MainActor
