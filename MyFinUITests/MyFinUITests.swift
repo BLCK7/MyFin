@@ -188,8 +188,12 @@ final class MyFinUITests: XCTestCase {
         app.launch()
         sleep(2)
         shot("welcome")
-        tap(button("Boshlash"), "Boshlash")
-        sleep(1)
+        sleep(2)
+        // The first tap can land while the welcome screen is still animating in; retry until the next page shows.
+        for _ in 0..<3 {
+            tap(button("Boshlash"), "Boshlash")
+            if app.textFields.firstMatch.waitForExistence(timeout: 3) { break }
+        }
         let name = app.textFields.firstMatch
         if name.waitForExistence(timeout: 4) {
             name.tap()
