@@ -34,20 +34,30 @@ final class MyFinUITests: XCTestCase {
     }
 
     /// First element of the query that can actually be tapped (other tabs keep their views alive but hidden).
+    /// Lowest y a tap can safely land on: above the floating "Operatsiya qo'shish" bar and the tab bar when they are on screen.
+    private func bottomLimit() -> CGFloat {
+        let h = app.windows.firstMatch.frame.height
+        var limit = h > 0 ? h - 30 : 800
+        let acc = app.buttons["Operatsiya qo'shish"]
+        if acc.exists && acc.isHittable && acc.frame.height > 0 { limit = min(limit, acc.frame.minY - 6) }
+        let bar = app.tabBars.firstMatch
+        if bar.exists && bar.isHittable && bar.frame.height > 0 { limit = min(limit, bar.frame.minY - 6) }
+        return limit
+    }
+
     private func hittable(_ query: XCUIElementQuery, timeout: TimeInterval) -> XCUIElement? {
-        let end = Date().addingTimeInterval(timeout)
+        let start = Date()
+        let end = start.addingTimeInterval(timeout)
         var scrolls = 0
         repeat {
             let n = min(query.count, 25)
-            // The tab bar and the "Operatsiya qo'shish" bar float over the bottom of every screen; an element
-            // under them is "hittable" for XCTest but a tap lands on the bar.
-            let screenHeight = app.windows.firstMatch.frame.height
-            let safeBottom = screenHeight > 0 ? screenHeight - 165 : 640
+            let limit = bottomLimit()
             for i in 0..<n {
                 let e = query.element(boundBy: i)
-                if e.exists && e.isHittable && e.frame.midY < safeBottom && e.frame.midY > 90 { return e }
+                if e.exists && e.isHittable && e.frame.midY < limit && e.frame.midY > 90 { return e }
             }
-            if n > 0 && scrolls < 4 {
+            // Give the screen a moment to appear, then scroll: lazy lists keep off-screen rows out of the tree.
+            if Date().timeIntervalSince(start) > 1.5 && scrolls < 5 {
                 app.swipeUp()
                 scrolls += 1
             } else {
