@@ -42,7 +42,7 @@ final class MyFinUITests: XCTestCase {
             // The tab bar and the "Operatsiya qo'shish" bar float over the bottom of every screen; an element
             // under them is "hittable" for XCTest but a tap lands on the bar.
             let screenHeight = app.windows.firstMatch.frame.height
-            let safeBottom = screenHeight > 0 ? screenHeight - 240 : 600
+            let safeBottom = screenHeight > 0 ? screenHeight - 165 : 640
             for i in 0..<n {
                 let e = query.element(boundBy: i)
                 if e.exists && e.isHittable && e.frame.midY < safeBottom && e.frame.midY > 90 { return e }
@@ -102,11 +102,19 @@ final class MyFinUITests: XCTestCase {
     }
 
     private func tab(_ name: String) {
-        // A scrolled screen collapses the tab bar to one icon; scrolling back up brings the tabs back.
-        for _ in 0..<3 {
+        // A scrolled screen collapses the tab bar to the current tab's icon; tapping it brings all tabs back.
+        for _ in 0..<4 {
             let b = app.tabBars.buttons[name]
             if b.exists && b.isHittable { b.tap(); sleep(1); return }
-            app.swipeDown()
+            let all = app.tabBars.buttons
+            var tapped = false
+            for i in 0..<min(all.count, 6) where all.element(boundBy: i).isHittable {
+                all.element(boundBy: i).tap()
+                tapped = true
+                break
+            }
+            if !tapped { app.swipeDown() }
+            sleep(1)
         }
         tap(app.tabBars.buttons[name], "tab \(name)")
         sleep(1)
