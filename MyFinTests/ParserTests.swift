@@ -142,6 +142,16 @@ final class ParserTests: XCTestCase {
         XCTAssertEqual(r.balance ?? 0, 62.22, accuracy: 0.001)
     }
 
+    func testRealTBCTopUpCardFirst() {
+        let r = p("*7758 kartangiz to‘ldirildi: 5,000.00 UZS. Balans: 35,530.34 UZS.")
+        XCTAssertTrue(r.isIncome)
+        XCTAssertEqual(r.amount, 5000)
+        XCTAssertEqual(r.last4, "7758")
+        XCTAssertEqual(r.balance ?? 0, 35_530.34, accuracy: 0.001)
+        XCTAssertNil(r.ignoreReason)
+        XCTAssertEqual(r.merchant, "")
+    }
+
     func testRealOperatorSMSIgnored() {
         XCTAssertNotNil(p("Hisobingiz to'ldirildi. PME_GSM. To'lov = 1000.0 SO'M. Balans = 1001.20 SO'M").ignoreReason)
     }

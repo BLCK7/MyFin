@@ -214,6 +214,33 @@ final class LedgerTests: XCTestCase {
         XCTAssertEqual(visa.balance, -469.66, accuracy: 0.001)
     }
 
+    private let tbcTopUp = "*7758 kartangiz to‘ldirildi: 5,000.00 UZS. Balans: 7,530.34 UZS."
+
+    func testUzcardToVisaTransferBankFirst() {
+        _ = FinanceEngine.processSMS("Kartadan o'tkazma: TBC VISA, UZ,28.11.26 12:17,karta ***7169. Miqdor:5000.00 UZS Qoldiq:20431.50 UZS", ctx: ctx)
+        _ = FinanceEngine.processNotification(title: "Karta to’ldirildi", body: tbcTopUp, app: "TBC UZ", ctx: ctx)
+        XCTAssertEqual(txs.count, 1)
+        XCTAssertEqual(txs[0].kind, .transfer)
+        XCTAssertEqual(txs[0].accountID, uzcard.id)
+        XCTAssertEqual(txs[0].toAccountID, visa.id)
+        XCTAssertEqual(visa.balance, 7530.34, accuracy: 0.001)
+        XCTAssertEqual(uzcard.balance, 20431.50, accuracy: 0.001)
+    }
+
+    func testUzcardToVisaTransferWithFeeTBCFirst() {
+        _ = FinanceEngine.processNotification(title: "Karta to’ldirildi", body: tbcTopUp, app: "TBC UZ", ctx: ctx)
+        _ = FinanceEngine.processSMS("Kartadan o'tkazma: TBC VISA, UZ,28.11.26 12:17,karta ***7169. Miqdor:5025.00 UZS Qoldiq:20406.50 UZS", ctx: ctx)
+        XCTAssertEqual(txs.count, 1)
+        let t = txs[0]
+        XCTAssertEqual(t.kind, .transfer)
+        XCTAssertEqual(t.accountID, uzcard.id)
+        XCTAssertEqual(t.toAccountID, visa.id)
+        XCTAssertEqual(t.amount, 5025)
+        XCTAssertEqual(t.toAmount, 5000)
+        XCTAssertEqual(visa.balance, 7530.34, accuracy: 0.001)
+        XCTAssertEqual(uzcard.balance, 20406.50, accuracy: 0.001)
+    }
+
     func testOperatorSMSIgnored() {
         let r = FinanceEngine.processSMS("Hisobingiz to'ldirildi. PME_GSM. To'lov = 1000.0 SO'M. Balans = 1001.20 SO'M", ctx: ctx)
         XCTAssertTrue(r.hasPrefix("E'tiborsiz"), r)
