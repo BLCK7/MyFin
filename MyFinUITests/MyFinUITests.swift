@@ -39,9 +39,13 @@ final class MyFinUITests: XCTestCase {
         var scrolls = 0
         repeat {
             let n = min(query.count, 25)
+            // The tab bar and the "Operatsiya qo'shish" bar float over the bottom of every screen; an element
+            // under them is "hittable" for XCTest but a tap lands on the bar.
+            let screenHeight = app.windows.firstMatch.frame.height
+            let safeBottom = screenHeight > 0 ? screenHeight - 240 : 600
             for i in 0..<n {
                 let e = query.element(boundBy: i)
-                if e.exists && e.isHittable { return e }
+                if e.exists && e.isHittable && e.frame.midY < safeBottom && e.frame.midY > 90 { return e }
             }
             if n > 0 && scrolls < 4 {
                 app.swipeUp()
