@@ -168,6 +168,7 @@ enum FinanceEngine {
     // MARK: Budgets
 
     static func checkBudget(category: String, ctx: ModelContext) {
+        guard !Sandbox.active else { return }
         let budgets = (try? ctx.fetch(FetchDescriptor<Budget>())) ?? []
         let relevant = budgets.filter { $0.limit > 0 && ($0.isOverall || (!category.isEmpty && $0.categoryName == category)) }
         guard !relevant.isEmpty else { return }

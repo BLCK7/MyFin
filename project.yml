@@ -73,11 +73,27 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+  MyFinTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: MyFinTests
+    dependencies:
+      - target: MyFin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: uz.saminov.myfin.tests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   MyFin:
     build:
       targets:
         MyFin: all
+        MyFinTests: [test]
+    test:
+      config: Debug
+      targets:
+        - MyFinTests
     run:
       config: Debug
     archive:

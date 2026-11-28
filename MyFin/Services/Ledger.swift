@@ -40,7 +40,7 @@ extension FinanceEngine {
     static let aggregatorKeys: Set<String> = ["payme", "paynet", "click"]
     /// Messages from the card networks themselves (HUMO / UZCARD SMS and their Telegram bots) cover every
     /// operation on the card, whichever app made it — they confirm like the issuing bank does.
-    static let processingKeys = ["humo", "cardxabar", "uzcard", "13131", "8500"]
+    static let processingKeys = ["humo", "cardxabar", "uzcard", "13131", "5800"]
 
     static let knownBanks: [(key: String, name: String)] = [
         ("tbc", "TBC Bank"), ("uzum", "Uzum Bank"), ("anor", "Anorbank"), ("payme", "Payme"), ("paynet", "Paynet"),
@@ -133,6 +133,10 @@ extension FinanceEngine {
     private static func ingest(text: String, tag: String, source: TxSource, hint: String, ctx: ModelContext) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let p = SMSParser.parse(trimmed) else { return "Matnda summa topilmadi, hech narsa yozilmadi." }
+        let walletSender = (tag + " " + hint).lowercased().contains("wallet")
+        if let reason = p.ignoreReason, !(walletSender && reason == SMSParser.noOperationReason) {
+            return "E'tiborsiz qoldirildi: \(reason)."
+        }
         let quoted = SMSParser.quoted(in: trimmed)
         var merchant = quoted ?? p.merchant
         if let phone = SMSParser.phoneCompact(in: trimmed) {
@@ -207,10 +211,13 @@ extension FinanceEngine {
         }
         if !e.cardName.isEmpty {
             let low = e.cardName.lowercased()
-            if let a = all.first(where: { a in
-                let n = a.name.lowercased(), b = a.bank.lowercased()
-                return (n.count >= 3 && low.contains(n)) || (b.count >= 3 && low.contains(b))
-            }) { return (a, false, false) }
+            // The card's own name ("Visa", "Humo") is more specific than the bank shared by several cards.
+            if let a = all.first(where: { $0.name.count >= 3 && low.contains($0.name.lowercased()) }) {
+                return (a, false, false)
+            }
+            if let a = all.first(where: { $0.bank.count >= 3 && low.contains($0.bank.lowercased()) }) {
+                return (a, false, false)
+            }
             if let key = knownBank(in: e.cardName)?.key, let a = all.first(where: { issuerKey(of: $0) == key }) {
                 return (a, false, false)
             }
@@ -382,7 +389,9 @@ extension FinanceEngine {
         }
         if diff > 0 {
             let onCard = txs.filter { $0.accountID == acc.id && near($0) }
-            if let t = onCard.first(where: \.provisional) ?? onCard.first(where: { automationSources.contains($0.sourceRaw) }) {
+            if let t = onCard.first(where: \.provisional)
+                ?? onCard.first(where: { $0.source == .manual })
+                ?? onCard.first(where: { automationSources.contains($0.sourceRaw) }) {
                 return (t, "removeDup")
             }
         } else if let t = txs.first(where: { $0.accountID != acc.id && $0.provisional && near($0) }) {
@@ -420,11 +429,13 @@ extension FinanceEngine {
 /// Per-card record of the last confirming bank message and balance sync, for the status list in settings.
 enum SourceStatus {
     static func markConfirmed(_ id: UUID, tag: String) {
+        guard !Sandbox.active else { return }
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "srcAt-\(id.uuidString)")
         UserDefaults.standard.set(tag, forKey: "srcTag-\(id.uuidString)")
     }
 
     static func markBalance(_ id: UUID) {
+        guard !Sandbox.active else { return }
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "balAt-\(id.uuidString)")
     }
 

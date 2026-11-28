@@ -7,6 +7,7 @@ enum WidgetSync {
     private static var pending: Task<Void, Never>?
 
     static func schedule(_ context: ModelContext? = nil) {
+        guard !Sandbox.active else { return }
         let ctx = context ?? DataStore.context
         pending?.cancel()
         pending = Task { @MainActor in

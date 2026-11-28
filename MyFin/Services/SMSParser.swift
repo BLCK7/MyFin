@@ -8,6 +8,9 @@ struct ParsedSMS: Equatable {
     var balance: Double?
     var balanceCurrency: String?
     var merchant: String
+    /// Set when the message has an amount but is not a completed card operation (OTP code, declined payment,
+    /// promo, reminder). Such messages are logged and skipped.
+    var ignoreReason: String? = nil
 }
 
 enum SMSParser {
@@ -15,7 +18,8 @@ enum SMSParser {
         "popolnen", "zachislen", "postuplen", "poluchen", "vozvrat", "kirim", "tushdi", "tushum",
         "to'ldir", "toldir", "to‘ldir", "toʻldir", "to’ldir", "hisobga o", "kartaga", "na kartu",
         "credit", "refund", "qaytarildi", "qaytarish", "qabul qil", "received", "keldi", "tushirildi",
-        "пополн", "зачисл", "поступл", "получен", "возврат"
+        "cashback", "keshbek", "keshbeк", "bekor qilin", "otmena", "reversal",
+        "пополн", "зачисл", "поступл", "получен", "возврат", "кешбэк", "кэшбэк", "отмен"
     ]
 
     static let expenseKeys = [
@@ -25,6 +29,32 @@ enum SMSParser {
         "chiqim", "spent", "debited", "sotib", "yechilgan", "naqdlash",
         "покупк", "оплат", "списан", "снят", "перевод с"
     ]
+
+    static let otpPatterns = [
+        #"(?:kod|code|код|parol|пароль|otp)\b[^\d\n]{0,25}\d{4,6}(?!\d)"#,
+        #"(?<!\d)\d{4,6}[^\d\n]{0,25}\b(?:kod|code|код|otp)\b"#,
+        #"hech kimga|никому не|do not share|не сообщайте|не передавайте"#
+    ]
+
+    static let declinedKeys = [
+        "rad etildi", "rad etilgan", "muvaffaqiyatsiz", "amalga oshmadi", "amalga oshirilmadi", "yetarli emas",
+        "mablag' yetarli", "mablag‘ yetarli", "declined", "insufficient", "failed", "xatolik",
+        "отклон", "отказ", "недостаточно", "ошибка", "не выполнен"
+    ]
+
+    /// Future or reminder wording — never a completed operation, even with a card number.
+    static let reminderKeys = [
+        "eslatma", "eslatib", "muddati", "qarzdorlik", "to'lashni unutmang", "to‘lashni unutmang", "yechiladi",
+        "напомин", "срок оплаты", "задолжен", "будет списан"
+    ]
+
+    /// Advertising — skipped unless the message names a card or a balance.
+    static let promoKeys = [
+        "aksiya", "chegirma", "yutib", "sovg'a", "sovg‘a", "promo", "taklif",
+        "акци", "скидк", "розыгрыш", "предлож"
+    ]
+
+    static let noOperationReason = "operatsiya belgisi yo'q (karta, qoldiq yoki to'lov so'zi)"
 
     static let balanceKeys = [
         "balans", "balance", "ostatok", "qoldiq", "dostupno", "mavjud", "bal:", "ost:",
@@ -256,14 +286,32 @@ enum SMSParser {
             if t.positive { isIncome = true }
         }
 
+        let card = last4(in: trimmed)
         return ParsedSMS(
             amount: txAmount?.value,
             currency: txAmount?.currency ?? balAmount?.currency ?? "UZS",
             isIncome: isIncome,
-            last4: last4(in: trimmed),
-            balance: balAmount?.value,
+            last4: card,
+            balance: balAmount.map { $0.negative ? -$0.value : $0.value },
             balanceCurrency: balAmount?.currency,
-            merchant: merchant(in: trimmed)
+            merchant: merchant(in: trimmed),
+            ignoreReason: ignoreReason(lower: lower, hasOperationWord: incomeIdx != nil || expenseIdx != nil,
+                                       hasCard: card != nil, hasBalance: balAmount != nil)
         )
+    }
+
+    static func ignoreReason(lower: String, hasOperationWord: Bool, hasCard: Bool, hasBalance: Bool) -> String? {
+        let ns = lower as NSString
+        for p in otpPatterns {
+            if let re = try? NSRegularExpression(pattern: p, options: [.caseInsensitive]),
+               re.firstMatch(in: lower, range: NSRange(location: 0, length: ns.length)) != nil {
+                return "tasdiqlash kodi (OTP)"
+            }
+        }
+        if declinedKeys.contains(where: { lower.contains($0) }) { return "rad etilgan / bajarilmagan operatsiya" }
+        if !hasBalance && reminderKeys.contains(where: { lower.contains($0) }) { return "eslatma, operatsiya emas" }
+        if !hasBalance && !hasCard && promoKeys.contains(where: { lower.contains($0) }) { return "reklama, operatsiya emas" }
+        if !hasOperationWord && !hasCard && !hasBalance { return noOperationReason }
+        return nil
     }
 }

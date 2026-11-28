@@ -40,6 +40,7 @@ enum AutomationLog {
     }
 
     static func add(source: String, app: String, input: String, result: String) {
+        guard !Sandbox.active else { return }
         var list = all()
         list.insert(AutomationEvent(date: Date(), source: source, app: app,
                                     input: String(input.prefix(600)), result: result), at: 0)

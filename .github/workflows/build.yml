@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build:
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VERSION: 1.0.${{ github.run_number }}
       BUILD: ${{ github.run_number }}
@@ -31,6 +31,27 @@ jobs:
         run: |
           brew install xcodegen
           xcodegen generate
+
+      - name: Test (simulator)
+        run: |
+          set -o pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')))")
+          echo "Simulator: $UDID"
+          xcodebuild test \
+            -project MyFin.xcodeproj \
+            -scheme MyFin \
+            -destination "id=$UDID" \
+            -derivedDataPath build-test \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee test.log | grep -E "error:|Test Case .*(passed|failed)|XCTAssert|\*\* TEST" || true
+          grep -q "\*\* TEST SUCCEEDED \*\*" test.log
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: test.log
+          if-no-files-found: ignore
 
       - name: Build (unsigned)
         run: |

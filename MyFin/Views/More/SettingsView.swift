@@ -221,10 +221,14 @@ struct AutomationView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
     @Environment(\.openURL) private var openURL
-    @State private var sample = "Pokupka: 50 000.00 UZS, KORZINKA SUPERMARKET, karta ***1234, 27.11.26 10:15, Balans: 1 234 567.00 UZS"
-    @State private var parsed: ParsedSMS?
-    @State private var tested = false
-    @State private var result: String?
+    @State private var script = Self.sampleScript
+    @State private var report: Sandbox.Report?
+
+    static let sampleScript = """
+    # Har qatorda bitta xabar: [Ilova] matn. SMS uchun [SMS], Apple Pay uchun [Apple Pay] summa | do'kon | karta
+    [TBC UZ] Siz "UzMobile" uchun 1000.00 UZS muvaffaqiyatli to‘lov qildingiz
+    [TBC UZ] Pul yechish, karta: *7758. 1,000.00 UZS. Balans: 1,530.34 UZS.
+    """
     @State private var log: [AutomationEvent] = []
     @State private var expandedBank: String?
 
@@ -331,57 +335,7 @@ struct AutomationView: View {
                 .buttonStyle(.glassProminent)
                 .controlSize(.large)
 
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("SMS / bildirishnomani sinash").font(.headline)
-                        Text("Bankdan kelgan haqiqiy SMS matnini shu yerga qo'ying va MyFin uni qanday tushunishini tekshiring.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        TextEditor(text: $sample)
-                            .frame(minHeight: 110)
-                            .scrollContentBackground(.hidden)
-                            .padding(8)
-                            .background(Color.primary.opacity(0.06), in: .rect(cornerRadius: 14))
-                        HStack(spacing: 10) {
-                            Button("Tekshirish") {
-                                parsed = SMSParser.parse(sample)
-                                tested = true
-                                result = nil
-                            }
-                            .buttonStyle(.glass)
-                            Button("MyFin'ga yozish") {
-                                result = FinanceEngine.processSMS(sample, ctx: context)
-                                log = AutomationLog.all()
-                            }
-                            .buttonStyle(.glassProminent)
-                            .disabled(SMSParser.parse(sample) == nil)
-                        }
-                        if tested {
-                            if let p = parsed {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    resultRow("Turi", p.isIncome ? "Kirim" : "Chiqim")
-                                    resultRow("Summa", p.amount.map { Money.format($0, p.currency) } ?? "—")
-                                    resultRow("Karta", p.last4.map { "•\($0)" } ?? "topilmadi")
-                                    resultRow("Qoldiq", p.balance.map { Money.format($0, p.balanceCurrency ?? p.currency) } ?? "—")
-                                    resultRow("Joy", p.merchant.isEmpty ? "—" : p.merchant)
-                                    resultRow("Kategoriya", FinanceEngine.guessCategory(text: p.merchant + " " + sample,
-                                                                                         kind: p.isIncome ? .income : .expense, ctx: context))
-                                }
-                                .padding(12)
-                                .background(Palette.income.opacity(0.12), in: .rect(cornerRadius: 14))
-                            } else {
-                                Text("Summa topilmadi. SMS formatini menga yuboring — parserni moslashtiraman.")
-                                    .font(.caption).foregroundStyle(Palette.expense)
-                            }
-                        }
-                        if let result {
-                            Text(result)
-                                .font(.callout)
-                                .padding(12)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Palette.accent.opacity(0.15), in: .rect(cornerRadius: 14))
-                        }
-                    }
-                }
+                sandboxCard
             }
             .padding(.horizontal)
             .padding(.bottom, 32)
@@ -391,6 +345,64 @@ struct AutomationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { log = AutomationLog.all() }
         .refreshable { log = AutomationLog.all() }
+    }
+
+    private var sandboxCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Sinov stoli", systemImage: "testtube.2").font(.headline)
+                Text("Xabarlarni ketma-ket yozing — MyFin ularni kartalaringizning nusxasida ishlatib, nima yozilishini ko'rsatadi. Haqiqiy ma'lumot, bildirishnoma va jurnal o'zgarmaydi.")
+                    .font(.caption).foregroundStyle(.secondary)
+                TextEditor(text: $script)
+                    .font(.caption.monospaced())
+                    .frame(minHeight: 140)
+                    .scrollContentBackground(.hidden)
+                    .padding(8)
+                    .background(Color.primary.opacity(0.06), in: .rect(cornerRadius: 14))
+                HStack(spacing: 10) {
+                    Button {
+                        report = Sandbox.run(Sandbox.parse(script), copying: context)
+                    } label: {
+                        Label("Sinash", systemImage: "play.fill")
+                    }
+                    .buttonStyle(.glassProminent)
+                    Button("Tozalash") {
+                        script = ""
+                        report = nil
+                    }
+                    .buttonStyle(.glass)
+                    Spacer()
+                    Button("Namuna") {
+                        script = Self.sampleScript
+                        report = nil
+                    }
+                    .font(.caption)
+                }
+                if let report {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(Array(report.steps.enumerated()), id: \.offset) { i, step in
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("\(i + 1). \(step.input)").font(.caption2).foregroundStyle(.secondary).lineLimit(3)
+                                Text(step.result).font(.caption)
+                            }
+                        }
+                        Divider()
+                        Text("Natija").font(.subheadline.weight(.semibold))
+                        if report.transactions.isEmpty {
+                            Text("Hech qanday operatsiya yozilmadi.").font(.caption).foregroundStyle(.secondary)
+                        }
+                        ForEach(report.transactions, id: \.self) { Text("• " + $0).font(.caption) }
+                        if !report.balances.isEmpty {
+                            Text("Balanslar").font(.subheadline.weight(.semibold)).padding(.top, 4)
+                            ForEach(report.balances, id: \.self) { Text("• " + $0).font(.caption) }
+                        }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Palette.accent.opacity(0.12), in: .rect(cornerRadius: 14))
+                }
+            }
+        }
     }
 
     private var sourcesCard: some View {
@@ -474,6 +486,22 @@ struct AutomationView: View {
                                 UIPasteboard.general.string = e.input
                             } label: {
                                 Label("Matnni nusxalash", systemImage: "doc.on.doc")
+                            }
+                            Button {
+                                let line: String
+                                if e.source == TxSource.applePay.title {
+                                    line = "[Apple Pay] " + e.input.replacingOccurrences(of: " · ", with: " | ") + " | " + e.app
+                                } else if e.source == TxSource.sms.title {
+                                    line = "[SMS] " + e.input.replacingOccurrences(of: "\n", with: " ")
+                                } else {
+                                    let lines = e.input.components(separatedBy: .newlines)
+                                    let body = lines.count > 1 ? lines.dropFirst().joined(separator: " ") : e.input
+                                    line = "[\(e.app.isEmpty ? e.source : e.app)] \(body)"
+                                }
+                                script += (script.hasSuffix("\n") || script.isEmpty ? "" : "\n") + line + "\n"
+                                report = nil
+                            } label: {
+                                Label("Sinov stoliga qo'shish", systemImage: "testtube.2")
                             }
                         }
                     }

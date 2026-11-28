@@ -164,6 +164,7 @@ extension Notifier {
     @MainActor
     static func postBalanceMismatch(account: Account, bank: Double, local: Double, diff: Double,
                                     suspect: (tx: FinTransaction, action: String)? = nil) {
+        guard !Sandbox.active else { return }
         let content = UNMutableNotificationContent()
         content.title = "Balans mos emas · \(account.displayName)"
         var hint = diff < 0 ? "Yozilmagan operatsiya bo'lishi mumkin." : "Biror operatsiya ortiqcha yozilgan bo'lishi mumkin."
@@ -188,6 +189,7 @@ extension Notifier {
 
     @MainActor
     static func postReview(_ tx: FinTransaction, account: Account?) {
+        guard !Sandbox.active else { return }
         guard UserDefaults.standard.object(forKey: "reviewNotifications") as? Bool ?? true else { return }
         let content = UNMutableNotificationContent()
         let signed = tx.kind == .income ? tx.amount : -tx.amount
