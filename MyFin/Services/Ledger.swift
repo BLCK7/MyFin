@@ -38,6 +38,9 @@ extension FinanceEngine {
     static let pairSeparator = "\n— — —\n"
     static let matchWindow: TimeInterval = 4 * 60
     static let aggregatorKeys: Set<String> = ["payme", "paynet", "click"]
+    /// Messages from the card networks themselves (HUMO / UZCARD SMS and their Telegram bots) cover every
+    /// operation on the card, whichever app made it — they confirm like the issuing bank does.
+    static let processingKeys = ["humo", "cardxabar", "uzcard", "13131", "8500"]
 
     static let knownBanks: [(key: String, name: String)] = [
         ("tbc", "TBC Bank"), ("uzum", "Uzum Bank"), ("anor", "Anorbank"), ("payme", "Payme"), ("paynet", "Paynet"),
@@ -220,6 +223,8 @@ extension FinanceEngine {
     private static func isConfirming(_ e: BankEvent, account: Account, byCard: Bool) -> Bool {
         guard byCard, e.source != .applePay else { return false }
         if e.source == .sms { return true }
+        let senderText = (e.tag + " " + e.hint).lowercased()
+        if processingKeys.contains(where: { senderText.contains($0) }) { return true }
         if let s = senderKey(e), aggregatorKeys.contains(s) { return false }
         guard let issuer = issuerKey(of: account) else { return true }
         return senderKey(e) == issuer

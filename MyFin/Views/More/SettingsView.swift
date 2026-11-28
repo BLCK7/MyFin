@@ -318,8 +318,10 @@ struct AutomationView: View {
                 step(2, "MyFin amali", "MyFin → “Bank SMS'ini yozish”. SMS matni = Message → Content (ko'k yorliq). Show When Run — o'chiq.")
                 step(3, "Operator SMS'larini ulamang", "UZTELECOM, Beeline, Ucell, Mobiuz SMS'lari telefon balansi haqida — karta emas. Ularni ulasangiz, to'lov ikki marta yoziladi.")
 
-                Text("Telegram bot (CardXabar, HUMO)").font(.headline).padding(.top, 4)
-                step(1, "Bildirishnoma triggeri", "Ilova: Telegram, sarlavhada “CardXabar” (yoki HUMO bot nomi) bo'lsa → “Darhol”. Amal: MyFin → “Bank bildirishnomasini yozish”, Matn = Body, Sarlavha = Title.")
+                Text("Telegram: @HUMOcardbot va @CardXabarBot").font(.headline).padding(.top, 4)
+                step(1, "Botni ulang", "Humo kartalar uchun @HUMOcardbot, Uzcard kartalar uchun @CardXabarBot. Ular to'lov tizimining o'zidan keladi — karta qaysi ilovada ishlatilmasin, har bir operatsiya va qoldiq keladi. Telefon balansiga bog'liq emas.")
+                step(2, "Telegram'da matn ko'rinsin", "Telegram → Sozlamalar → Bildirishnomalar → “Xabar matnini ko'rsatish” yoqiq bo'lsin, aks holda Shortcuts'ga faqat “Yangi xabar” keladi.")
+                step(3, "Bildirishnoma triggeri", "Ilova: Telegram. Add Filter → Title contains “HUMO” (yoki “CardXabar”). Amal: MyFin → “Bank bildirishnomasini yozish”: Matn = Body, Sarlavha = Title, Ilova = “HUMO bot” (yoki “CardXabar”).")
 
                 Button {
                     if let url = URL(string: "shortcuts://") { openURL(url) }
