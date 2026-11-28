@@ -160,7 +160,8 @@ struct TotalBalanceIntent: AppIntent {
         let ctx = DataStore.context
         let debts = (try? ctx.fetch(FetchDescriptor<Debt>())) ?? []
         let base = IntentLogic.base()
-        let s = FinanceEngine.summary(accounts: FinanceEngine.accounts(ctx), transactions: [], debts: debts,
+        let txs = (try? ctx.fetch(FetchDescriptor<FinTransaction>())) ?? []
+        let s = FinanceEngine.summary(accounts: FinanceEngine.accounts(ctx), transactions: txs, debts: debts,
                                       rates: RateStore.shared, base: base)
         let text = "Hisoblarda: \(Money.format(s.totalAssets, base)). Sof boylik: \(Money.format(s.netWorth, base))."
         return .result(value: s.totalAssets, dialog: "\(text)")
