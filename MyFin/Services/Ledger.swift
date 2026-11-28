@@ -29,8 +29,8 @@ struct BankEvent {
 ///   bank messages without a card number — is **unconfirmed**: it is recorded at once on the best-guess card,
 ///   and when the confirming message arrives (within 4 minutes, same amount, or bank amount ≤1.5% higher because
 ///   of a fee) both become one transaction on the right card with the bank's amount.
-/// * The same app reporting the same amount twice means two payments; two different apps reporting it within the
-///   window means one payment.
+/// * Two different apps reporting the same amount within the window mean one payment. The same app reporting it
+///   twice means two payments, unless exactly one of the two messages names the card (TBC sends both kinds).
 /// * An expense on one own card and an equal income on another within the window become a transfer.
 /// * The balance in bank messages is the final check: a mismatch raises a notification that points at the
 ///   likely duplicate or misplaced transaction.
@@ -59,6 +59,14 @@ extension FinanceEngine {
 
     static func chunkTags(_ raw: String) -> Set<String> {
         Set(raw.components(separatedBy: pairSeparator).map { appTag(of: $0) }.filter { !$0.isEmpty })
+    }
+
+    /// The same app may send two messages for one payment (TBC: one with the card number and balance, one with
+    /// the merchant). Two messages from one app that both name a card — or both don't — are two payments.
+    static func sameSenderConflict(_ raw: String, tag: String, hasCard: Bool) -> Bool {
+        raw.components(separatedBy: pairSeparator).contains { chunk in
+            appTag(of: chunk) == tag && (SMSParser.last4(in: chunk) != nil) == hasCard
+        }
     }
 
     static func issuerKey(of account: Account) -> String? {
@@ -228,7 +236,8 @@ extension FinanceEngine {
         guard let amount = e.amount else { return nil }
         let myTag = e.tag.lowercased()
         let candidates = recentAutomationTxs(ctx).filter { t in
-            guard t.kind == e.kind, t.currency == e.currency, !chunkTags(t.rawText).contains(myTag) else { return false }
+            guard t.kind == e.kind, t.currency == e.currency, !sameSenderConflict(t.rawText, tag: myTag, hasCard: e.last4 != nil)
+            else { return false }
             let tConfirmed = !t.provisional
             if confirmed && tConfirmed {
                 // The same payment reported by the bank twice (SMS and app) — same card, exact amount.
