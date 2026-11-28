@@ -235,6 +235,12 @@ enum SMSParser {
 
     static func merchant(in text: String) -> String {
         if let q = quoted(in: text) { return q }
+        if let re = try? NSRegularExpression(pattern: #"\b(humo|uzcard|visa|mastercard)\s+to\s+(humo|uzcard|visa|mastercard)\b"#,
+                                             options: [.caseInsensitive]),
+           let m = re.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) {
+            let ns = text as NSString
+            return "\(ns.substring(with: m.range(at: 1)).capitalized) → \(ns.substring(with: m.range(at: 2)).capitalized)"
+        }
         var cleaned = text
         let removals = [
             "([+\\-−]?)\\s?" + numberPattern + "\\s?" + currencyPattern,

@@ -39,9 +39,11 @@ struct RecurringView: View {
                             IconBadge(icon: cat?.icon ?? "repeat", color: Color(hex: cat?.colorHex ?? "#06B6D4"), size: 40)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(r.name).font(.headline).lineLimit(1)
-                                Text(r.isPaidThisMonth ? "Bu oy to'langan ✓" : "Har oyning \(r.dayOfMonth)-kuni · \(r.nextDate.uzDate)")
+                                Text(r.isPaidThisMonth ? "Bu oy to'langan ✓"
+                                     : (r.isOverdue ? "Muddati o'tdi · \(r.nextDate.uzDate)"
+                                        : "Har oyning \(r.dayOfMonth)-kuni · \(r.nextDate.uzDate)"))
                                     .font(.caption)
-                                    .foregroundStyle(r.isPaidThisMonth ? Palette.income : Color.secondary)
+                                    .foregroundStyle(r.isPaidThisMonth ? Palette.income : (r.isOverdue && r.isActive ? Palette.expense : Color.secondary))
                             }
                             Spacer()
                             VStack(alignment: .trailing, spacing: 6) {

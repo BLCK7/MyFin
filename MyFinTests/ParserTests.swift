@@ -140,6 +140,7 @@ final class ParserTests: XCTestCase {
         XCTAssertEqual(r.amount, 2000)
         XCTAssertEqual(r.last4, "9300")
         XCTAssertEqual(r.balance ?? 0, 62.22, accuracy: 0.001)
+        XCTAssertEqual(r.merchant, "Humo → Visa")
     }
 
     func testRealTBCTopUpCardFirst() {

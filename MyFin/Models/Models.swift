@@ -310,6 +310,11 @@ final class RecurringPayment {
 
     var isPaidThisMonth: Bool { lastPaidMonth == RecurringPayment.monthKey() }
 
+    /// This month's payment day has passed and it is not marked paid.
+    var isOverdue: Bool {
+        !isPaidThisMonth && nextDate < Calendar.current.startOfDay(for: Date())
+    }
+
     var nextDate: Date {
         let cal = Calendar.current
         let now = Date()

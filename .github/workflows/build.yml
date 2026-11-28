@@ -41,7 +41,7 @@ jobs:
           xcrun simctl boot "$UDID" || true
           xcodebuild build-for-testing \
             -project MyFin.xcodeproj -scheme MyFin -destination "id=$UDID" \
-            -derivedDataPath build-test CODE_SIGNING_ALLOWED=NO 2>&1 | tee build-test.log | grep -E "error:|\*\* TEST BUILD" || true
+            -derivedDataPath build-test CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES AD_HOC_CODE_SIGNING_ALLOWED=YES 2>&1 | tee build-test.log | grep -E "error:|\*\* TEST BUILD" || true
           grep -q "TEST BUILD SUCCEEDED" build-test.log
 
       - name: Unit tests

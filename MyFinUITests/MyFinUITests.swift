@@ -33,31 +33,78 @@ final class MyFinUITests: XCTestCase {
         add(a)
     }
 
+    /// First element of the query that can actually be tapped (other tabs keep their views alive but hidden).
+    private func hittable(_ query: XCUIElementQuery, timeout: TimeInterval) -> XCUIElement? {
+        let end = Date().addingTimeInterval(timeout)
+        var scrolls = 0
+        repeat {
+            let n = min(query.count, 25)
+            for i in 0..<n {
+                let e = query.element(boundBy: i)
+                if e.exists && e.isHittable { return e }
+            }
+            if n > 0 && scrolls < 4 {
+                app.swipeUp()
+                scrolls += 1
+            } else {
+                usleep(400_000)
+            }
+        } while Date() < end
+        return nil
+    }
+
     @discardableResult
-    private func tap(_ element: XCUIElement, _ what: String, timeout: TimeInterval = 6,
+    private func tap(_ query: XCUIElementQuery, _ what: String, timeout: TimeInterval = 6,
                      file: StaticString = #filePath, line: UInt = #line) -> Bool {
-        guard element.waitForExistence(timeout: timeout) else {
+        guard let e = hittable(query, timeout: timeout) else {
             XCTFail("Topilmadi: \(what)", file: file, line: line)
             shot("MISSING-\(what.replacingOccurrences(of: " ", with: "_"))")
             return false
         }
-        if !element.isHittable {
-            app.swipeUp()
+        e.tap()
+        return true
+    }
+
+    @discardableResult
+    private func tap(_ element: XCUIElement, _ what: String, timeout: TimeInterval = 6,
+                     file: StaticString = #filePath, line: UInt = #line) -> Bool {
+        guard element.waitForExistence(timeout: timeout), element.isHittable else {
+            XCTFail("Topilmadi: \(what)", file: file, line: line)
+            shot("MISSING-\(what.replacingOccurrences(of: " ", with: "_"))")
+            return false
         }
         element.tap()
         return true
     }
 
-    private func button(_ label: String) -> XCUIElement {
-        app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", label)).firstMatch
+    private func buttons(_ label: String) -> XCUIElementQuery {
+        app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", label))
     }
 
-    private func anyText(_ label: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", label)).firstMatch
+    private func button(_ label: String) -> XCUIElement { buttons(label).firstMatch }
+
+    private func exactButtons(_ label: String) -> XCUIElementQuery {
+        app.buttons.matching(NSPredicate(format: "label == %@", label))
+    }
+
+    private func texts(_ label: String) -> XCUIElementQuery {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", label))
+    }
+
+    private func visible(_ label: String) -> Bool {
+        let q = texts(label)
+        for i in 0..<min(q.count, 25) where q.element(boundBy: i).isHittable { return true }
+        return false
     }
 
     private func tab(_ name: String) {
-        tap(app.tabBars.buttons[name].exists ? app.tabBars.buttons[name] : button(name), "tab \(name)")
+        // A scrolled screen collapses the tab bar to one icon; scrolling back up brings the tabs back.
+        for _ in 0..<3 {
+            let b = app.tabBars.buttons[name]
+            if b.exists && b.isHittable { b.tap(); sleep(1); return }
+            app.swipeDown()
+        }
+        tap(app.tabBars.buttons[name], "tab \(name)")
         sleep(1)
     }
 
@@ -68,12 +115,14 @@ final class MyFinUITests: XCTestCase {
     }
 
     private func closeSheet(_ label: String = "Bekor") {
-        let b = button(label)
-        if b.waitForExistence(timeout: 3) {
-            b.tap()
-        } else {
-            app.swipeDown(velocity: .fast)
+        let q = exactButtons(label)
+        var done = false
+        for i in 0..<min(q.count, 10) where q.element(boundBy: i).isHittable {
+            q.element(boundBy: i).tap()
+            done = true
+            break
         }
+        if !done { app.swipeDown(velocity: .fast) }
         sleep(1)
     }
 
@@ -118,14 +167,17 @@ final class MyFinUITests: XCTestCase {
         tap(button("Davom etish"), "Davom etish 2")
         sleep(1)
         shot("cards")
-        if button("Karta qo'shish").waitForExistence(timeout: 3) {
+        if button("Karta qo'shish").waitForExistence(timeout: 3) && button("Karta qo'shish").isHittable {
             button("Karta qo'shish").tap()
             sleep(1)
             shot("card-form")
             let fields = app.textFields
-            if fields.count > 0 { fields.element(boundBy: 0).tap(); fields.element(boundBy: 0).typeText("TBC Visa") }
+            if fields.count > 2 {
+                fields.element(boundBy: 1).tap(); fields.element(boundBy: 1).typeText("TBC")
+                fields.element(boundBy: 2).tap(); fields.element(boundBy: 2).typeText("7758")
+            }
             shot("card-form-filled")
-            if button("Qo'shish").exists { button("Qo'shish").tap() } else { closeSheet() }
+            if exactButtons("Qo'shish").firstMatch.exists { exactButtons("Qo'shish").firstMatch.tap() } else { closeSheet() }
             sleep(1)
             shot("cards-added")
         }
@@ -165,14 +217,14 @@ final class MyFinUITests: XCTestCase {
 
         tab("Operatsiyalar")
         shot("transactions")
-        tap(anyText("Korzinka"), "Korzinka operatsiyasi")
+        tap(texts("Korzinka"), "Korzinka operatsiyasi")
         sleep(1)
         shot("tx-editor")
         closeSheet()
 
         tab("Hisoblar")
         shot("accounts")
-        tap(anyText("•••• 7758"), "Visa kartasi")
+        tap(texts("•••• 7758"), "Visa kartasi")
         sleep(1)
         shot("account-detail")
         tap(button("Tahrirlash"), "Hisobni tahrirlash")
@@ -187,7 +239,10 @@ final class MyFinUITests: XCTestCase {
 
         tab("Qarzlar")
         shot("debts")
-        tap(anyText("Ali"), "Ali qarzi")
+        tap(buttons("Menga qarzdor"), "Menga qarzdor segmenti")
+        sleep(1)
+        shot("debts-owed-to-me")
+        tap(texts("Ali"), "Ali qarzi")
         sleep(1)
         shot("debt-detail")
         back()
@@ -204,12 +259,12 @@ final class MyFinUITests: XCTestCase {
             amount.tap()
             amount.typeText("12500")
         }
-        tap(anyText("Kafe va restoran"), "Kafe kategoriyasi")
+        tap(texts("Kafe va restoran"), "Kafe kategoriyasi")
         shot("new-tx-filled")
         tap(button("Saqlash"), "Saqlash")
         sleep(2)
         tab("Operatsiyalar")
-        XCTAssertTrue(anyText("Kafe va restoran").waitForExistence(timeout: 5), "Yangi operatsiya ro'yxatda yo'q")
+        XCTAssertNotNil(hittable(texts("Kafe va restoran"), timeout: 5), "Yangi operatsiya ro'yxatda yo'q")
         shot("tx-list-after-add")
 
         tap(app.buttons["Chekni skanerlash"], "QR tugmasi")
@@ -220,8 +275,8 @@ final class MyFinUITests: XCTestCase {
         tap(app.buttons["Skrinshotdan qo'shish"], "Skrinshot tugmasi")
         sleep(3)
         shot("photo-picker")
-        let cancel = app.buttons["Cancel"]
-        if cancel.waitForExistence(timeout: 3) { cancel.tap() }
+        let cancel = app.buttons["Cancel"].exists ? app.buttons["Cancel"] : app.buttons["Close"]
+        if cancel.waitForExistence(timeout: 3) { cancel.tap() } else { app.swipeDown(velocity: .fast) }
         sleep(1)
         shot("photo-sheet-idle")
         closeSheet("Yopish")
@@ -233,20 +288,18 @@ final class MyFinUITests: XCTestCase {
         tab("Ko'proq")
         shot("more")
         for title in ["Tahlil", "Limitlar", "Maqsadlar", "Doimiy to'lovlar", "Kategoriyalar", "Valyuta kurslari"] {
-            if tap(anyText(title), title) {
+            if tap(texts(title), title) {
                 sleep(1)
                 shot(title.replacingOccurrences(of: " ", with: "_").replacingOccurrences(of: "'", with: ""))
                 back()
             }
         }
-        tap(anyText("Kartalarni avtomatik kuzatish"), "Avtomatizatsiya")
+        tap(texts("Kartalarni avtomatik kuzatish"), "Avtomatizatsiya")
         sleep(1)
         shot("automation")
         app.swipeUp()
         shot("automation-2")
-        let run = button("Sinash")
-        for _ in 0..<6 where !run.isHittable { app.swipeUp() }
-        tap(run, "Sinash")
+        tap(buttons("Sinash"), "Sinash", timeout: 10)
         sleep(1)
         app.swipeUp()
         shot("sandbox-result")
@@ -254,7 +307,7 @@ final class MyFinUITests: XCTestCase {
         shot("sandbox-result-2")
         back()
 
-        tap(anyText("Sozlamalar"), "Sozlamalar")
+        tap(texts("Sozlamalar"), "Sozlamalar")
         sleep(1)
         shot("settings")
         app.swipeUp()
@@ -266,7 +319,7 @@ final class MyFinUITests: XCTestCase {
         prefix = "e-security"
         launchDemo()
         tab("Ko'proq")
-        tap(anyText("Shaxsiy seyf"), "Seyf")
+        tap(texts("Shaxsiy seyf"), "Seyf")
         sleep(1)
         shot("vault-gate")
         tap(button("PIN-kod bilan ochish"), "PIN bilan ochish")
@@ -274,15 +327,15 @@ final class MyFinUITests: XCTestCase {
         typePIN("135790")
         sleep(2)
         shot("vault-list")
-        tap(anyText("Pasport (demo)"), "Pasport yozuvi")
+        tap(texts("Pasport (demo)"), "Pasport yozuvi")
         sleep(2)
         shot("vault-detail")
         back()
         back()
 
-        tap(anyText("Sozlamalar"), "Sozlamalar")
+        tap(texts("Sozlamalar"), "Sozlamalar")
         sleep(1)
-        tap(button("Hozir qulflash"), "Hozir qulflash")
+        tap(buttons("Hozir qulflash"), "Hozir qulflash")
         sleep(2)
         shot("lock-screen")
         typePIN("000000")
@@ -297,40 +350,35 @@ final class MyFinUITests: XCTestCase {
     func test06ReviewInboxAndDelete() {
         prefix = "f-review"
         launchDemo()
-        XCTAssertTrue(anyText("Izoh kutmoqda").waitForExistence(timeout: 5), "Izoh kutayotganlar kartasi yo'q")
+        XCTAssertTrue(texts("Izoh kutmoqda").firstMatch.waitForExistence(timeout: 5), "Izoh kutayotganlar kartasi yo'q")
         shot("inbox")
         tap(app.buttons["reviewClearAll"], "Hammasi ko'rildi")
         sleep(1)
-        XCTAssertFalse(anyText("Izoh kutmoqda").exists, "Izoh kartasi yopilmadi")
+        XCTAssertFalse(visible("Izoh kutmoqda"), "Izoh kartasi yopilmadi")
         shot("inbox-cleared")
 
         tab("Operatsiyalar")
-        tap(anyText("Korzinka"), "Korzinka")
+        tap(texts("Korzinka"), "Korzinka")
         sleep(1)
-        app.swipeUp()
-        tap(button("Operatsiyani o'chirish"), "O'chirish")
+        tap(buttons("Operatsiyani o'chirish"), "O'chirish", timeout: 8)
         sleep(1)
         shot("delete-confirm")
-        let confirm = app.buttons.matching(NSPredicate(format: "label == %@", "O'chirish")).firstMatch
-        tap(confirm, "O'chirishni tasdiqlash")
+        tap(exactButtons("O'chirish"), "O'chirishni tasdiqlash")
         sleep(2)
-        XCTAssertFalse(anyText("Korzinka").exists, "Operatsiya o'chmadi")
+        XCTAssertFalse(visible("Korzinka"), "Operatsiya o'chmadi")
         shot("after-delete")
 
         tab("Hisoblar")
-        tap(anyText("•••• 7675"), "Uzum kartasi")
+        tap(texts("•••• 7675"), "Uzum kartasi")
         sleep(1)
-        tap(button("Tahrirlash"), "Tahrirlash")
+        tap(buttons("Tahrirlash"), "Tahrirlash")
         sleep(1)
-        app.swipeUp()
-        app.swipeUp()
-        tap(button("Hisobni o'chirish"), "Hisobni o'chirish")
+        tap(buttons("Hisobni o'chirish"), "Hisobni o'chirish", timeout: 8)
         sleep(1)
-        let confirmAcc = app.buttons.matching(NSPredicate(format: "label == %@", "O'chirish")).firstMatch
-        tap(confirmAcc, "Hisob o'chirishni tasdiqlash")
+        tap(exactButtons("O'chirish"), "Hisob o'chirishni tasdiqlash")
         sleep(3)
         shot("after-account-delete")
-        XCTAssertFalse(anyText("•••• 7675").exists, "Hisob o'chmadi")
+        XCTAssertFalse(visible("•••• 7675"), "Hisob o'chmadi")
         XCTAssertTrue(app.tabBars.firstMatch.exists, "Hisob o'chirilgandan keyin ilova yopildi")
     }
 }

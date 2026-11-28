@@ -16,13 +16,21 @@ struct BudgetRow: View {
                 IconBadge(icon: budget.isOverall ? "sum" : (category?.icon ?? "tag.fill"),
                           color: budget.isOverall ? Palette.accent : Color(hex: category?.colorHex ?? "#94A3B8"), size: 32)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(budget.displayName).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Text(budget.displayName).font(.subheadline.weight(.semibold))
+                        .lineLimit(1).minimumScaleFactor(0.8)
                     Text(budget.period.title).font(.caption2).foregroundStyle(.secondary)
                 }
-                Spacer()
-                AmountText(value: spent, currency: base, font: .caption.weight(.bold), color: color)
-                Text("/").font(.caption).foregroundStyle(.secondary)
-                AmountText(value: budget.limit, currency: base, font: .caption)
+                .layoutPriority(1)
+                Spacer(minLength: 6)
+                VStack(alignment: .trailing, spacing: 1) {
+                    AmountText(value: spent, currency: base, font: .caption.weight(.bold), color: color)
+                    HStack(spacing: 2) {
+                        Text("/")
+                        AmountText(value: budget.limit, currency: base, font: .caption2)
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
             }
             ProgressCapsule(progress: ratio, color: color, height: 7)
             HStack(spacing: 4) {
