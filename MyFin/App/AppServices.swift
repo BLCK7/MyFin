@@ -36,7 +36,7 @@ final class AppRouter {
 @MainActor
 final class OverlayState {
     static let shared = OverlayState()
-    var showSplash = true
+    var showSplash = !UITestSupport.isActive
     var privacy = false
     private init() {}
 }

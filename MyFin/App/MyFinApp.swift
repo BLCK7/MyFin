@@ -6,6 +6,10 @@ struct MyFinApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @AppStorage("appearance") private var appearance = "dark"
 
+    init() {
+        UITestSupport.prepareDefaults()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -63,8 +67,13 @@ struct RootView: View {
         }
         .task {
             SeedData.seedIfNeeded(context)
+            UITestSupport.seedDemo(context)
             pinSet = PasscodeStore.isSet
             Notifier.registerReviewCategories(context)
+            if UITestSupport.isActive {
+                overlay.showSplash = false
+                return
+            }
             try? await Task.sleep(for: .milliseconds(1600))
             overlay.showSplash = false
             await rates.refreshIfStale()

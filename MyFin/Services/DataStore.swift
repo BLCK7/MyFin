@@ -9,7 +9,7 @@ enum DataStore {
     ])
 
     static let container: ModelContainer = {
-        let config = ModelConfiguration("MyFin", schema: schema, isStoredInMemoryOnly: false)
+        let config = ModelConfiguration("MyFin", schema: schema, isStoredInMemoryOnly: UITestSupport.isActive)
         do {
             return try ModelContainer(for: schema, configurations: [config])
         } catch {

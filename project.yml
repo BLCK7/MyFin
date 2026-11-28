@@ -84,16 +84,29 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: uz.saminov.myfin.tests
         GENERATE_INFOPLIST_FILE: YES
+  MyFinUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: MyFinUITests
+    dependencies:
+      - target: MyFin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: uz.saminov.myfin.uitests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   MyFin:
     build:
       targets:
         MyFin: all
         MyFinTests: [test]
+        MyFinUITests: [test]
     test:
       config: Debug
       targets:
         - MyFinTests
+        - MyFinUITests
     run:
       config: Debug
     archive:

@@ -145,7 +145,7 @@ enum PasscodeStore {
 final class AppLock {
     static let shared = AppLock()
 
-    var isLocked = true
+    var isLocked = !UITestSupport.isActive
     private var backgroundedAt: Date?
 
     private init() {}

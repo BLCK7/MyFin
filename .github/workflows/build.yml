@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build:
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       VERSION: 1.0.${{ github.run_number }}
       BUILD: ${{ github.run_number }}
@@ -32,25 +32,57 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
-      - name: Test (simulator)
+      - name: Build for testing
         run: |
           set -o pipefail
-          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')))")
+          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone') and 'Pro' in x['name']))")
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
           echo "Simulator: $UDID"
-          xcodebuild test \
-            -project MyFin.xcodeproj \
-            -scheme MyFin \
-            -destination "id=$UDID" \
-            -derivedDataPath build-test \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | tee test.log | grep -E "error:|Test Case .*(passed|failed)|XCTAssert|\*\* TEST" || true
-          grep -q "\*\* TEST SUCCEEDED \*\*" test.log
+          xcrun simctl boot "$UDID" || true
+          xcodebuild build-for-testing \
+            -project MyFin.xcodeproj -scheme MyFin -destination "id=$UDID" \
+            -derivedDataPath build-test CODE_SIGNING_ALLOWED=NO 2>&1 | tee build-test.log | grep -E "error:|\*\* TEST BUILD" || true
+          grep -q "TEST BUILD SUCCEEDED" build-test.log
 
-      - name: Upload test log
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project MyFin.xcodeproj -scheme MyFin -destination "id=$UDID" \
+            -derivedDataPath build-test -only-testing:MyFinTests 2>&1 | tee test.log | grep -E "error:|Test Case .*(passed|failed)|XCTAssert|\*\* TEST" || true
+          grep -q "\*\* TEST EXECUTE SUCCEEDED \*\*\|\*\* TEST SUCCEEDED \*\*" test.log
+
+      - name: UI tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          rm -rf "$HOME/uishots"
+          xcodebuild test-without-building \
+            -project MyFin.xcodeproj -scheme MyFin -destination "id=$UDID" \
+            -derivedDataPath build-test -only-testing:MyFinUITests 2>&1 | tee uitest.log | grep -E "error:|Test Case .*(passed|failed)|XCTAssert|Topilmadi|\*\* TEST" || true
+          grep -q "\*\* TEST EXECUTE SUCCEEDED \*\*\|\*\* TEST SUCCEEDED \*\*" uitest.log
+
+      - name: Publish UI screenshots
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls "$HOME/uishots" 2>/dev/null | head -100 || true
+          mkdir -p "$HOME/uishots"
+          (cd "$HOME/uishots" && zip -qr "$GITHUB_WORKSPACE/uishots.zip" . ) || true
+          touch uitest.log
+          gh release view ui-check >/dev/null 2>&1 || gh release create ui-check --prerelease --title "UI check" --notes "UI test skrinshotlari (avtomatik)" 
+          gh release upload ui-check uishots.zip uitest.log --clobber || true
+
+      - name: Upload test logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-log
-          path: test.log
+          name: test-logs
+          path: |
+            test.log
+            uitest.log
+            build-test.log
           if-no-files-found: ignore
 
       - name: Build (unsigned)
