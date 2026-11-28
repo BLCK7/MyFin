@@ -61,7 +61,7 @@ final class MyFinUITests: XCTestCase {
         print(lines.joined(separator: "\n"))
     }
 
-    private func hittable(_ query: XCUIElementQuery, timeout: TimeInterval) -> XCUIElement? {
+    private func hittable(_ query: XCUIElementQuery, timeout: TimeInterval, maxScrolls: Int = 5) -> XCUIElement? {
         let start = Date()
         let end = start.addingTimeInterval(timeout)
         var scrolls = 0
@@ -70,12 +70,12 @@ final class MyFinUITests: XCTestCase {
             let limit = bottomLimit()
             for i in 0..<n {
                 let e = query.element(boundBy: i)
-                if e.exists && e.isHittable && e.frame.midY < limit && e.frame.midY > 90 { return e }
+                if e.exists && e.isHittable && e.frame.midY < limit && e.frame.midY > 50 { return e }
             }
             if Date() >= end { return nil }
             // Give the screen a moment to appear, then scroll: lazy lists keep off-screen rows out of the tree.
             // The loop always checks once more after the last scroll.
-            if Date().timeIntervalSince(start) > 1.5 && scrolls < 5 {
+            if Date().timeIntervalSince(start) > 1.5 && scrolls < maxScrolls {
                 app.swipeUp()
                 scrolls += 1
             } else {
@@ -85,9 +85,9 @@ final class MyFinUITests: XCTestCase {
     }
 
     @discardableResult
-    private func tap(_ query: XCUIElementQuery, _ what: String, timeout: TimeInterval = 6,
+    private func tap(_ query: XCUIElementQuery, _ what: String, timeout: TimeInterval = 6, maxScrolls: Int = 5,
                      file: StaticString = #filePath, line: UInt = #line) -> Bool {
-        guard let e = hittable(query, timeout: timeout) else {
+        guard let e = hittable(query, timeout: timeout, maxScrolls: maxScrolls) else {
             debugDump(query, what)
             XCTFail("Topilmadi: \(what)", file: file, line: line)
             shot("MISSING-\(what.replacingOccurrences(of: " ", with: "_"))")
@@ -339,7 +339,7 @@ final class MyFinUITests: XCTestCase {
         shot("automation")
         app.swipeUp()
         shot("automation-2")
-        tap(buttons("Sinash"), "Sinash", timeout: 10)
+        tap(exactButtons("Sinash"), "Sinash", timeout: 40, maxScrolls: 14)
         sleep(1)
         app.swipeUp()
         shot("sandbox-result")
