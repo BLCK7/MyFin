@@ -34,17 +34,18 @@ final class MyFinUITests: XCTestCase {
     }
 
     /// First element of the query that can actually be tapped (other tabs keep their views alive but hidden).
-    /// Lowest y a tap can safely land on: above the floating "Operatsiya qo'shish" bar and the tab bar.
-    /// Frames that do not look like a bottom bar (top half of the screen) are ignored.
+    /// Lowest y a tap can safely land on. The floating "Operatsiya qo'shish" capsule (and the tab bar beside or
+    /// below it) covers the bottom of every tab screen; XCTest reports only its label's frame, so keep a margin.
+    /// Under a sheet the capsule is not hittable and nothing covers the sheet's bottom.
     private func bottomLimit() -> CGFloat {
         let h = app.windows.firstMatch.frame.height
         let screen = h > 300 ? h : 874
-        var limit = screen - 30
-        for e in [app.buttons["accessoryAdd"], app.tabBars.firstMatch] where e.exists {
-            let f = e.frame
-            if f.height > 0 && f.minY > screen * 0.6 { limit = min(limit, f.minY - 6) }
+        let acc = app.buttons["accessoryAdd"]
+        if acc.exists && acc.isHittable {
+            let f = acc.frame
+            if f.height > 0 && f.minY > screen * 0.6 { return f.minY - 26 }
         }
-        return limit
+        return screen - 30
     }
 
     private func debugDump(_ query: XCUIElementQuery, _ what: String) {
@@ -64,22 +65,23 @@ final class MyFinUITests: XCTestCase {
         let start = Date()
         let end = start.addingTimeInterval(timeout)
         var scrolls = 0
-        repeat {
+        while true {
             let n = min(query.count, 25)
             let limit = bottomLimit()
             for i in 0..<n {
                 let e = query.element(boundBy: i)
                 if e.exists && e.isHittable && e.frame.midY < limit && e.frame.midY > 90 { return e }
             }
+            if Date() >= end { return nil }
             // Give the screen a moment to appear, then scroll: lazy lists keep off-screen rows out of the tree.
+            // The loop always checks once more after the last scroll.
             if Date().timeIntervalSince(start) > 1.5 && scrolls < 5 {
                 app.swipeUp()
                 scrolls += 1
             } else {
                 usleep(400_000)
             }
-        } while Date() < end
-        return nil
+        }
     }
 
     @discardableResult
