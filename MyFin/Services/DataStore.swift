@@ -75,6 +75,13 @@ enum SeedData {
         CategorySeed(name: "Boshqa kirim", icon: "plus.circle.fill", color: "#94A3B8", kind: .income, keywords: "")
     ]
 
+    static let feeCategory = "Bank komissiyasi"
+
+    static let v3Categories: [CategorySeed] = [
+        CategorySeed(name: feeCategory, icon: "percent", color: "#F59E0B", kind: .expense,
+                     keywords: "komissiya,комиссия,commission")
+    ]
+
     static let personalCategory = "Shaxsiy ehtiyojlar"
     static let phoneCategory = "Telefon to'lovi"
 
@@ -91,11 +98,11 @@ enum SeedData {
         let existing = (try? ctx.fetch(FetchDescriptor<FinCategory>())) ?? []
         let defaults = UserDefaults.standard
         if existing.isEmpty {
-            for (i, c) in (categories + v2Categories).enumerated() {
+            for (i, c) in (categories + v2Categories + v3Categories).enumerated() {
                 ctx.insert(FinCategory(name: c.name, icon: c.icon, colorHex: c.color, kind: c.kind,
                                        keywords: c.keywords, sortOrder: i, isSystem: true))
             }
-            defaults.set(2, forKey: "seedVersion")
+            defaults.set(3, forKey: "seedVersion")
             try? ctx.save()
             return
         }
@@ -111,6 +118,18 @@ enum SeedData {
                 subs.keywords = subs.keywordList.filter { $0 != "claude" && $0 != "anthropic" }.joined(separator: ",")
             }
             defaults.set(2, forKey: "seedVersion")
+            try? ctx.save()
+        }
+        if defaults.integer(forKey: "seedVersion") < 3 {
+            let all = (try? ctx.fetch(FetchDescriptor<FinCategory>())) ?? []
+            let names = Set(all.map(\.name))
+            var order = (all.map(\.sortOrder).max() ?? 0) + 1
+            for c in v3Categories where !names.contains(c.name) {
+                ctx.insert(FinCategory(name: c.name, icon: c.icon, colorHex: c.color, kind: c.kind,
+                                       keywords: c.keywords, sortOrder: order, isSystem: true))
+                order += 1
+            }
+            defaults.set(3, forKey: "seedVersion")
             try? ctx.save()
         }
     }

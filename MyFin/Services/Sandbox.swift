@@ -10,6 +10,7 @@ enum Sandbox {
         var source: TxSource
         var app: String
         var text: String
+        var title: String = ""
     }
 
     struct Report {
@@ -18,21 +19,26 @@ enum Sandbox {
         var balances: [String]
     }
 
-    /// One message per line: `[TBC UZ] text`, `[SMS] text`, `[Apple Pay] amount | merchant | card`.
+    /// One message per line: `[TBC UZ] text`, `[Uzum Bank | Payment completed] text` (app | notification title),
+    /// `[SMS] text`, `[Apple Pay] amount | merchant | card`.
     static func parse(_ script: String) -> [Step] {
         script.components(separatedBy: .newlines).compactMap { raw in
             let line = raw.trimmingCharacters(in: .whitespaces)
             guard !line.isEmpty, !line.hasPrefix("#") else { return nil }
             var app = ""
+            var title = ""
             var text = line
             if line.hasPrefix("["), let end = line.firstIndex(of: "]") {
-                app = String(line[line.index(after: line.startIndex)..<end]).trimmingCharacters(in: .whitespaces)
+                let head = String(line[line.index(after: line.startIndex)..<end])
+                let parts = head.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+                app = parts[0]
+                title = parts.count > 1 ? parts[1] : ""
                 text = String(line[line.index(after: end)...]).trimmingCharacters(in: .whitespaces)
             }
             let low = app.lowercased()
             let source: TxSource = low == "sms" ? .sms : low == "apple pay" ? .applePay
                 : low == "skrinshot" ? .screenshot : .notification
-            return Step(source: source, app: app, text: text)
+            return Step(source: source, app: app, text: text, title: title)
         }
     }
 
@@ -73,7 +79,7 @@ enum Sandbox {
             case .screenshot:
                 r = FinanceEngine.processScreenshotText(s.text, ctx: ctx)
             default:
-                r = FinanceEngine.processNotification(title: s.app, body: s.text, app: s.app, ctx: ctx)
+                r = FinanceEngine.processNotification(title: s.title.isEmpty ? s.app : s.title, body: s.text, app: s.app, ctx: ctx)
             }
             results.append(("[\(s.app.isEmpty ? s.source.title : s.app)] \(s.text)", r))
         }

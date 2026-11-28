@@ -228,6 +228,9 @@ struct AutomationView: View {
     # Har qatorda bitta xabar: [Ilova] matn. SMS uchun [SMS], Apple Pay uchun [Apple Pay] summa | do'kon | karta
     [TBC UZ] Siz "UzMobile" uchun 1000.00 UZS muvaffaqiyatli to‘lov qildingiz
     [TBC UZ] Pul yechish, karta: *7758. 1,000.00 UZS. Balans: 1,530.34 UZS.
+    [Uzum Bank | Payment completed] 5 000 UZS, card *7675, UB P2P VISAUZUM2HUMO FEE. Available: 734,60 UZS
+    [SMS] HUMOCARD *9300: oplata 2000.00 UZS; Humo to Visa>Tashken; 26-11-27 18:57;  Dostupno: 62.22 UZS
+    [SMS] Kartaga o'tkazma: TBC VISA SALOM2UZCARD, UZ,27.11.26 19:01,karta ***7169. Miqdor:3000.00 UZS Qoldiq:28431.50 UZS
     """
     @State private var log: [AutomationEvent] = []
     @State private var expandedBank: String?
@@ -496,7 +499,9 @@ struct AutomationView: View {
                                 } else {
                                     let lines = e.input.components(separatedBy: .newlines)
                                     let body = lines.count > 1 ? lines.dropFirst().joined(separator: " ") : e.input
-                                    line = "[\(e.app.isEmpty ? e.source : e.app)] \(body)"
+                                    let title = lines.count > 1 ? lines[0] : ""
+                                    let app = e.app.isEmpty ? e.source : e.app
+                                    line = title.isEmpty || title == app ? "[\(app)] \(body)" : "[\(app) | \(title)] \(body)"
                                 }
                                 script += (script.hasSuffix("\n") || script.isEmpty ? "" : "\n") + line + "\n"
                                 report = nil

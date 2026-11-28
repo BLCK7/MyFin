@@ -115,6 +115,41 @@ final class ParserTests: XCTestCase {
         XCTAssertNotNil(p("Kredit to'lovi 01.12 da karta *9300 dan yechiladi: 500 000 so'm").ignoreReason)
     }
 
+    func testRealUzumFee() {
+        let r = p("5 000 UZS, card *7675, UB P2P VISAUZUM2HUMO FEE. Available: 734,60 UZS")
+        XCTAssertEqual(r.amount, 5000)
+        XCTAssertEqual(r.last4, "7675")
+        XCTAssertEqual(r.balance ?? 0, 734.60, accuracy: 0.001)
+        XCTAssertNil(r.ignoreReason)
+        XCTAssertTrue(SMSParser.isFee("UB P2P VISAUZUM2HUMO FEE."))
+        XCTAssertFalse(SMSParser.isFee("Coffee shop"))
+        XCTAssertTrue(SMSParser.hasOperationWord("Payment completed"))
+    }
+
+    func testRealUzcardIncomingTransfer() {
+        let r = p("Kartaga o'tkazma: TBC VISA SALOM2UZCARD, UZ,27.11.26 19:01,karta ***7169. Miqdor:3000.00 UZS Qoldiq:28431.50 UZS")
+        XCTAssertTrue(r.isIncome)
+        XCTAssertEqual(r.amount, 3000)
+        XCTAssertEqual(r.last4, "7169")
+        XCTAssertEqual(r.balance ?? 0, 28431.50, accuracy: 0.001)
+    }
+
+    func testRealHumoSMS() {
+        let r = p("HUMOCARD *9300: oplata 2000.00 UZS; Humo to Visa>Tashken; 26-11-27 18:57;  Dostupno: 62.22 UZS")
+        XCTAssertFalse(r.isIncome)
+        XCTAssertEqual(r.amount, 2000)
+        XCTAssertEqual(r.last4, "9300")
+        XCTAssertEqual(r.balance ?? 0, 62.22, accuracy: 0.001)
+    }
+
+    func testRealOperatorSMSIgnored() {
+        XCTAssertNotNil(p("Hisobingiz to'ldirildi. PME_GSM. To'lov = 1000.0 SO'M. Balans = 1001.20 SO'M").ignoreReason)
+    }
+
+    func testNegativeBalance() {
+        XCTAssertEqual(p("Pul yechish, karta: *7758. 3,000.00 UZS. Balans: -469.66 UZS.").balance ?? 0, -469.66, accuracy: 0.001)
+    }
+
     func testPhoneTopUpOperatorSMSHasNoCard() {
         let r = p("Hisobingiz to'ldirildi. PME_GSM. To'lov = 1000.0 SO'M. Balans = 1001.20 SO'M")
         XCTAssertNil(r.last4)

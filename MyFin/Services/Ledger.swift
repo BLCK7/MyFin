@@ -96,7 +96,11 @@ extension FinanceEngine {
         let combined = [title, bodyTrim].filter { !$0.isEmpty }.joined(separator: "\n")
         let appName = app.trimmingCharacters(in: .whitespaces)
         let tag = appName.isEmpty ? (title.isEmpty ? "Bildirishnoma" : title) : appName
-        let text = SMSParser.parse(bodyTrim)?.amount != nil ? bodyTrim : combined
+        var text = SMSParser.parse(bodyTrim)?.amount != nil ? bodyTrim : combined
+        // Uzum: title "Payment completed", body without an operation word — the title tells the direction.
+        if text == bodyTrim && !SMSParser.hasOperationWord(bodyTrim) && SMSParser.hasOperationWord(title) {
+            text = bodyTrim + "\n" + title
+        }
         let result = ingest(text: text, tag: tag, source: .notification, hint: appName + " " + title, ctx: ctx)
         AutomationLog.add(source: TxSource.notification.title, app: appName, input: combined, result: result)
         return result
@@ -305,7 +309,11 @@ extension FinanceEngine {
 
     private static func create(_ e: BankEvent, amount: Double, account acc: Account, confirmed: Bool,
                                ctx: ModelContext) -> FinTransaction {
-        let category = guessCategory(text: e.merchant + " " + e.text, kind: e.kind, ctx: ctx)
+        var category = guessCategory(text: e.merchant + " " + e.text, kind: e.kind, ctx: ctx)
+        if e.kind == .expense && SMSParser.isFee(e.text),
+           categories(ctx).contains(where: { $0.name == SeedData.feeCategory }) {
+            category = SeedData.feeCategory
+        }
         let tx = addTransaction(kind: e.kind, amount: amount, currency: e.currency, accountID: acc.id,
                                 category: category, merchant: e.merchant,
                                 note: e.source == .applePay ? "Apple Pay" : "", source: e.source,

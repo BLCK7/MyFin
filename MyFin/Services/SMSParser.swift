@@ -54,6 +54,21 @@ enum SMSParser {
         "акци", "скидк", "розыгрыш", "предлож"
     ]
 
+    /// Mobile operator's own SMS about the phone account (UZTELECOM: "Hisobingiz to'ldirildi. PME_GSM …").
+    static let operatorKeys = ["pme_gsm", "hisobingiz to'ldirildi", "hisobingiz to‘ldirildi", "hisobingiz toʻldirildi",
+                               "balans =", "ваш баланс", "счет пополнен"]
+
+    static func hasOperationWord(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        return incomeKeys.contains(where: { lower.contains($0) }) || expenseKeys.contains(where: { lower.contains($0) })
+    }
+
+    static func isFee(_ text: String) -> Bool {
+        guard let re = try? NSRegularExpression(pattern: #"(?<![a-zа-я])(fee|komissiya|комиссия|commission)(?![a-zа-я])"#,
+                                                options: [.caseInsensitive]) else { return false }
+        return re.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) != nil
+    }
+
     static let noOperationReason = "operatsiya belgisi yo'q (karta, qoldiq yoki to'lov so'zi)"
 
     static let balanceKeys = [
@@ -309,6 +324,7 @@ enum SMSParser {
             }
         }
         if declinedKeys.contains(where: { lower.contains($0) }) { return "rad etilgan / bajarilmagan operatsiya" }
+        if !hasCard && operatorKeys.contains(where: { lower.contains($0) }) { return "mobil operator xabari (telefon balansi)" }
         if !hasBalance && reminderKeys.contains(where: { lower.contains($0) }) { return "eslatma, operatsiya emas" }
         if !hasBalance && !hasCard && promoKeys.contains(where: { lower.contains($0) }) { return "reklama, operatsiya emas" }
         if !hasOperationWord && !hasCard && !hasBalance { return noOperationReason }
