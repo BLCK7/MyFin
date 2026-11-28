@@ -170,6 +170,7 @@ struct AccountDetailView: View {
     @State private var adjustText = ""
     @State private var addKind: TxKind? = nil
     @State private var editing: FinTransaction?
+    @State private var pendingDelete = false
 
     private var mine: [FinTransaction] {
         transactions.filter { $0.accountID == account.id || $0.toAccountID == account.id }
@@ -177,17 +178,25 @@ struct AccountDetailView: View {
 
     private var monthIn: Double {
         let cal = Calendar.current
+        let rates = RateStore.shared
         return mine.filter { cal.isDate($0.date, equalTo: Date(), toGranularity: .month) }.reduce(0) { sum, t in
-            if t.kind == .income && t.accountID == account.id { return sum + t.amount }
-            if t.kind == .transfer && t.toAccountID == account.id { return sum + (t.toAmount > 0 ? t.toAmount : t.amount) }
+            if t.kind == .income && t.accountID == account.id {
+                return sum + rates.convert(t.amount, from: t.currency, to: account.currency)
+            }
+            if t.kind == .transfer && t.toAccountID == account.id {
+                return sum + (t.toAmount > 0 ? t.toAmount : rates.convert(t.amount, from: t.currency, to: account.currency))
+            }
             return sum
         }
     }
 
     private var monthOut: Double {
         let cal = Calendar.current
+        let rates = RateStore.shared
         return mine.filter { cal.isDate($0.date, equalTo: Date(), toGranularity: .month) }.reduce(0) { sum, t in
-            if (t.kind == .expense || t.kind == .transfer) && t.accountID == account.id { return sum + t.amount }
+            if (t.kind == .expense || t.kind == .transfer) && t.accountID == account.id {
+                return sum + rates.convert(t.amount, from: t.currency, to: account.currency)
+            }
             return sum
         }
     }
@@ -203,8 +212,7 @@ struct AccountDetailView: View {
                         actionButton("Kirim", "plus", Palette.income) { addKind = .income }
                         actionButton("O'tkazma", "arrow.left.arrow.right", Palette.transfer) { addKind = .transfer }
                         actionButton("To'g'rilash", "slider.horizontal.3", Palette.accent) {
-                            adjustText = Money.number(account.balance, decimals: Money.decimals(account.currency))
-                                .replacingOccurrences(of: " ", with: "")
+                            adjustText = Money.editString(account.balance, account.currency)
                             showAdjust = true
                         }
                     }
@@ -247,7 +255,19 @@ struct AccountDetailView: View {
                 Button("Tahrirlash") { showEdit = true }
             }
         }
-        .sheet(isPresented: $showEdit) { AccountEditor(existing: account) }
+        .sheet(isPresented: $showEdit, onDismiss: {
+            guard pendingDelete else { return }
+            // Leave this screen first; the account is removed once nothing on screen shows it any more.
+            let doomed = account
+            let ctx = context
+            dismiss()
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(500))
+                FinanceEngine.deleteAccount(doomed, ctx: ctx)
+            }
+        }) {
+            AccountEditor(existing: account, onDelete: { pendingDelete = true })
+        }
         .sheet(item: $editing) { TransactionEditor(existing: $0) }
         .sheet(item: $addKind) { k in
             TransactionEditor(presetKind: k, presetAccountID: account.id)
@@ -279,6 +299,8 @@ struct AccountDetailView: View {
 
 struct AccountEditor: View {
     var existing: Account? = nil
+    /// Set by a screen that shows this account: it removes the account after closing itself.
+    var onDelete: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -337,7 +359,7 @@ struct AccountEditor: View {
                     Text(existing == nil ? "Boshlang'ich balans" : "Joriy balans")
                 } footer: {
                     if kind == .card {
-                        Text("Oxirgi 4 raqam bank SMS'larini shu kartaga bog'lash uchun kerak.")
+                        Text("Bank nomi (TBC, Uzum, Anorbank…) va oxirgi 4 raqam bank xabarlarini shu kartaga bog'lash uchun kerak.")
                     }
                 }
                 Section("Ko'rinish") {
@@ -365,8 +387,18 @@ struct AccountEditor: View {
             }
             .confirmationDialog("Hisob o'chirilsinmi?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("O'chirish", role: .destructive) {
-                    if let existing { FinanceEngine.deleteAccount(existing, ctx: context) }
-                    dismiss()
+                    guard let existing else { return dismiss() }
+                    if let onDelete {
+                        onDelete()
+                        dismiss()
+                    } else {
+                        let ctx = context
+                        dismiss()
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(450))
+                            FinanceEngine.deleteAccount(existing, ctx: ctx)
+                        }
+                    }
                 }
             }
             .onAppear(perform: load)
@@ -389,7 +421,7 @@ struct AccountEditor: View {
         bank = a.bank
         last4 = a.cardLast4
         currency = a.currency
-        balanceText = Money.number(a.balance, decimals: Money.decimals(a.currency)).replacingOccurrences(of: " ", with: "")
+        balanceText = Money.editString(a.balance, a.currency)
         color = a.colorHex
         includeInTotal = a.includeInTotal
         archived = a.isArchived

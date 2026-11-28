@@ -8,7 +8,9 @@ struct FinanceSummary {
     var owedToMe: Double = 0
     var monthIncome: Double = 0
     var monthExpense: Double = 0
-    var netWorth: Double { totalAssets + owedToMe - iOwe }
+    /// Money taken from accounts into savings goals — still the owner's, so it stays in net worth.
+    var goalReserve: Double = 0
+    var netWorth: Double { totalAssets + owedToMe - iOwe + goalReserve }
     var monthNet: Double { monthIncome - monthExpense }
 }
 
@@ -50,13 +52,14 @@ enum FinanceEngine {
             if d.direction == .iOwe { s.iOwe += v } else { s.owedToMe += v }
         }
         let cal = Calendar.current
-        for t in transactions where cal.isDate(t.date, equalTo: month, toGranularity: .month) {
-            let v = rates.convert(t.amount, from: t.currency, to: base)
-            switch t.kind {
-            case .income: s.monthIncome += v
-            case .expense: s.monthExpense += v
-            case .transfer: break
+        for t in transactions {
+            if t.source == .goal && t.kind == .expense && t.balanceApplied {
+                s.goalReserve += rates.convert(t.amount, from: t.currency, to: base)
             }
+            guard cal.isDate(t.date, equalTo: month, toGranularity: .month) else { continue }
+            let v = rates.convert(t.amount, from: t.currency, to: base)
+            if t.countsAsIncome { s.monthIncome += v }
+            if t.countsAsExpense { s.monthExpense += v }
         }
         return s
     }
@@ -65,7 +68,7 @@ enum FinanceEngine {
                                    rates: RateStore, base: String, month: Date) -> [CategorySlice] {
         let cal = Calendar.current
         var totals: [String: Double] = [:]
-        for t in transactions where t.kind == .expense && cal.isDate(t.date, equalTo: month, toGranularity: .month) {
+        for t in transactions where t.countsAsExpense && cal.isDate(t.date, equalTo: month, toGranularity: .month) {
             let key = t.categoryName.isEmpty ? "Boshqa xarajat" : t.categoryName
             totals[key, default: 0] += rates.convert(t.amount, from: t.currency, to: base)
         }
@@ -80,7 +83,7 @@ enum FinanceEngine {
     static func spent(budget: Budget, transactions: [FinTransaction], rates: RateStore, base: String) -> Double {
         let range = budget.period.interval()
         return transactions
-            .filter { $0.kind == .expense && range.contains($0.date) && (budget.isOverall || $0.categoryName == budget.categoryName) }
+            .filter { $0.countsAsExpense && range.contains($0.date) && (budget.isOverall || $0.categoryName == budget.categoryName) }
             .reduce(0) { $0 + rates.convert($1.amount, from: $1.currency, to: base) }
     }
 
@@ -96,7 +99,7 @@ enum FinanceEngine {
     static func spent(category: String, transactions: [FinTransaction], rates: RateStore, base: String, month: Date = Date()) -> Double {
         let cal = Calendar.current
         return transactions
-            .filter { $0.kind == .expense && $0.categoryName == category && cal.isDate($0.date, equalTo: month, toGranularity: .month) }
+            .filter { $0.countsAsExpense && $0.categoryName == category && cal.isDate($0.date, equalTo: month, toGranularity: .month) }
             .reduce(0) { $0 + rates.convert($1.amount, from: $1.currency, to: base) }
     }
 
@@ -163,6 +166,7 @@ enum FinanceEngine {
         }
         ctx.delete(account)
         try? ctx.save()
+        WidgetSync.schedule(ctx)
     }
 
     // MARK: Budgets
@@ -303,7 +307,11 @@ enum FinanceEngine {
         var keys: [String] = []
         if let phone = SMSParser.phoneCompact(in: tx.merchant + " " + tx.rawText) { keys.append(phone) }
         let m = tx.merchant.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        if m.count >= 3 && m.count <= 40 && !m.hasPrefix("+998") { keys.append(m) }
+        // App and bank names say nothing about what was bought — learning them would pull every payment made
+        // through Payme or Uzum into one category.
+        let generic = knownBanks.contains { m == $0.key || m == $0.name.lowercased() }
+            || ["hisobga olinmagan", "tbc uz", "uzum bank", "apple pay", "wallet"].contains(m)
+        if m.count >= 3 && m.count <= 40 && !m.hasPrefix("+998") && !generic { keys.append(m) }
         guard !keys.isEmpty else { return }
         for c in categories(ctx) where c.kind == tx.kind {
             var list = c.keywordList

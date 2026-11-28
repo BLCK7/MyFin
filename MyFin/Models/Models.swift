@@ -88,6 +88,11 @@ final class FinTransaction {
         set { sourceRaw = newValue.rawValue }
     }
 
+    /// Real income / spending. Transfers, debt principal and money set aside for goals only move money between
+    /// the owner's own pots, so they stay out of income, expense, category and limit totals.
+    var countsAsIncome: Bool { kind == .income && source != .debt && source != .goal }
+    var countsAsExpense: Bool { kind == .expense && source != .debt && source != .goal }
+
     var title: String {
         if !merchant.isEmpty { return merchant }
         if kind == .transfer { return "O'tkazma" }

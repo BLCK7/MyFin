@@ -115,7 +115,8 @@ enum BackupManager {
         return url
     }
 
-    static func wipe(_ ctx: ModelContext) {
+    /// Clears everything. The vault is kept when restoring a backup, because backups never contain it.
+    static func wipe(_ ctx: ModelContext, includingVault: Bool = true) {
         fetchAll(Account.self, ctx).forEach { ctx.delete($0) }
         fetchAll(FinTransaction.self, ctx).forEach { ctx.delete($0) }
         fetchAll(FinCategory.self, ctx).forEach { ctx.delete($0) }
@@ -124,7 +125,7 @@ enum BackupManager {
         fetchAll(Budget.self, ctx).forEach { ctx.delete($0) }
         fetchAll(Goal.self, ctx).forEach { ctx.delete($0) }
         fetchAll(RecurringPayment.self, ctx).forEach { ctx.delete($0) }
-        fetchAll(VaultItem.self, ctx).forEach { ctx.delete($0) }
+        if includingVault { fetchAll(VaultItem.self, ctx).forEach { ctx.delete($0) } }
         try? ctx.save()
     }
 
@@ -135,7 +136,7 @@ enum BackupManager {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let b = try decoder.decode(BackupFile.self, from: data)
-        wipe(ctx)
+        wipe(ctx, includingVault: false)
         for a in b.accounts {
             let m = Account(name: a.name, kind: AccountKind(rawValue: a.kind) ?? .card, bank: a.bank, cardLast4: a.last4,
                             currency: a.currency, balance: a.balance, colorHex: a.color, sortOrder: a.sortOrder)
@@ -193,7 +194,12 @@ enum BackupManager {
         let txs = fetchAll(FinTransaction.self, ctx).sorted { $0.date > $1.date }
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd HH:mm"
-        func esc(_ s: String) -> String { "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
+        // Text from bank messages ends up here; a cell starting with = + - @ would run as a formula in Excel.
+        func esc(_ s: String) -> String {
+            var v = s
+            if let f = v.first, "=+-@\t\r".contains(f) { v = "'" + v }
+            return "\"" + v.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        }
         var out = "Sana,Turi,Summa,Valyuta,Hisob,Qayerga,Kategoriya,Do'kon,Izoh,Manba\n"
         for t in txs {
             let from = t.accountID.flatMap { accounts[$0] } ?? ""

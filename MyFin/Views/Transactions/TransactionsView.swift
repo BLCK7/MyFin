@@ -107,8 +107,8 @@ struct TransactionsView: View {
         var inc = 0.0, exp = 0.0
         for t in filtered {
             let v = rates.convert(t.amount, from: t.currency, to: base)
-            if t.kind == .income { inc += v }
-            if t.kind == .expense { exp += v }
+            if t.countsAsIncome { inc += v }
+            if t.countsAsExpense { exp += v }
         }
         return (inc, exp)
     }
@@ -200,11 +200,9 @@ struct TransactionsView: View {
     private func daySection(_ day: Date, _ items: [FinTransaction]) -> some View {
         let net = items.reduce(0.0) { sum, t in
             let v = rates.convert(t.amount, from: t.currency, to: base)
-            switch t.kind {
-            case .income: return sum + v
-            case .expense: return sum - v
-            case .transfer: return sum
-            }
+            if t.countsAsIncome { return sum + v }
+            if t.countsAsExpense { return sum - v }
+            return sum
         }
         return VStack(alignment: .leading, spacing: 8) {
             HStack {

@@ -244,7 +244,7 @@ struct DebtEditor: View {
         person = d.person
         phone = d.phone
         direction = d.direction
-        amountText = Money.number(d.remaining, decimals: Money.decimals(d.currency)).replacingOccurrences(of: " ", with: "")
+        amountText = Money.editString(d.remaining, d.currency)
         currency = d.currency
         hasDue = d.dueDate != nil
         due = d.dueDate ?? due
@@ -394,8 +394,13 @@ struct DebtDetailView: View {
         .sheet(isPresented: $showEdit) { DebtEditor(existing: debt) }
         .confirmationDialog("Qarz yozuvi o'chirilsinmi?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("O'chirish", role: .destructive) {
-                FinanceEngine.deleteDebt(debt, ctx: context)
+                let doomed = debt
+                let ctx = context
                 dismiss()
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(500))
+                    FinanceEngine.deleteDebt(doomed, ctx: ctx)
+                }
             }
         }
     }
@@ -426,7 +431,7 @@ struct DebtPaymentSheet: View {
                 Section {
                     AmountField(title: "0", text: $amountText, currency: debt.currency)
                     Button("Qolgan summani kiritish") {
-                        amountText = Money.number(debt.remaining, decimals: Money.decimals(debt.currency)).replacingOccurrences(of: " ", with: "")
+                        amountText = Money.editString(debt.remaining, debt.currency)
                     }
                 } header: {
                     Text("Summa")

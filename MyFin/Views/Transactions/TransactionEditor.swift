@@ -28,7 +28,12 @@ struct TransactionEditor: View {
     private var activeAccounts: [Account] { accounts.filter { !$0.isArchived } }
     private var fromAccount: Account? { accounts.first { $0.id == accountID } }
     private var toAccount: Account? { accounts.first { $0.id == toAccountID } }
-    private var currency: String { fromAccount?.currency ?? "UZS" }
+    /// An existing operation keeps its own currency (a 10 USD purchase on a UZS card stays 10 USD) unless the
+    /// account is changed.
+    private var currency: String {
+        if let t = existing, t.accountID == accountID { return t.currency }
+        return fromAccount?.currency ?? "UZS"
+    }
     private var needsToAmount: Bool {
         kind == .transfer && toAccount != nil && toAccount?.currency != fromAccount?.currency
     }
@@ -131,8 +136,13 @@ struct TransactionEditor: View {
             }
             .confirmationDialog("O'chirilsinmi?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("O'chirish", role: .destructive) {
-                    if let existing { FinanceEngine.delete(existing, ctx: context) }
+                    guard let existing else { return dismiss() }
+                    let ctx = context
                     dismiss()
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(450))
+                        FinanceEngine.delete(existing, ctx: ctx)
+                    }
                 }
             } message: {
                 Text("Hisob balansi ham mos ravishda qaytariladi.")
@@ -168,8 +178,8 @@ struct TransactionEditor: View {
         loaded = true
         if let t = existing {
             kind = t.kind
-            amountText = Money.number(t.amount, decimals: Money.decimals(t.currency)).replacingOccurrences(of: " ", with: "")
-            toAmountText = t.toAmount > 0 ? String(t.toAmount) : ""
+            amountText = Money.editString(t.amount, t.currency)
+            toAmountText = t.toAmount > 0 ? Money.editString(t.toAmount, toAccount?.currency ?? t.currency) : ""
             accountID = t.accountID
             toAccountID = t.toAccountID
             category = t.categoryName
@@ -182,7 +192,7 @@ struct TransactionEditor: View {
             if let a = p.amount {
                 let target = accounts.first { $0.id == accountID }?.currency ?? p.currency
                 let value = RateStore.shared.convert(a, from: p.currency, to: target)
-                amountText = Money.number(value, decimals: Money.decimals(target)).replacingOccurrences(of: " ", with: "")
+                amountText = Money.editString(value, target)
             }
             category = p.category.isEmpty ? (p.kind == .income ? "Boshqa kirim" : "Boshqa xarajat") : p.category
             merchant = p.merchant
@@ -207,6 +217,7 @@ struct TransactionEditor: View {
         let cat = kind == .transfer ? "" : (category.isEmpty ? FinanceEngine.guessCategory(text: merchant, kind: kind, ctx: context) : category)
         if let t = existing {
             let previousCategory = t.categoryName
+            let accountChanged = t.accountID != accountID
             if t.balanceApplied { FinanceEngine.applyEffect(of: t, sign: -1, ctx: context) }
             t.kind = kind
             t.amount = amount
@@ -223,7 +234,9 @@ struct TransactionEditor: View {
                 FinanceEngine.learn(category: cat, from: t, ctx: context)
             }
             t.needsReview = false
-            t.provisional = false
+            // Choosing the card by hand settles where an unconfirmed payment belongs; a category or note edit
+            // leaves it open so the bank's message can still merge into it.
+            if accountChanged { t.provisional = false }
             FinanceEngine.applyEffect(of: t, sign: 1, ctx: context)
             try? context.save()
             UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["review-\(t.id.uuidString)"])

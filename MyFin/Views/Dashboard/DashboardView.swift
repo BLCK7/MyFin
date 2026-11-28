@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import Charts
+import UserNotifications
 
 struct DashboardView: View {
     @Binding var tab: AppTab
@@ -14,6 +15,7 @@ struct DashboardView: View {
     @AppStorage("userName") private var userName = ""
     @AppStorage("hideAmounts") private var hide = false
     @State private var editing: FinTransaction?
+    @Environment(\.modelContext) private var context
 
     private var activeAccounts: [Account] { accounts.filter { !$0.isArchived } }
 
@@ -42,8 +44,17 @@ struct DashboardView: View {
                         .appearAnimation(0)
                     MonthCard(summary: summary, base: base)
                         .appearAnimation(1)
-                    ReviewInboxCard(items: pending, accounts: accounts,
-                                    categories: categories) { editing = $0 }
+                    ReviewInboxCard(items: pending, accounts: accounts, categories: categories,
+                                    onSelect: { editing = $0 },
+                                    onClearAll: {
+                                        withAnimation(.snappy) {
+                                            for t in pending { t.needsReview = false }
+                                            try? context.save()
+                                        }
+                                        UNUserNotificationCenter.current().removeDeliveredNotifications(
+                                            withIdentifiers: pending.map { "review-\($0.id.uuidString)" })
+                                        WidgetSync.schedule(context)
+                                    })
                     AccountsStrip(accounts: activeAccounts) { tab = .accounts }
                         .appearAnimation(2)
                     if !slices.isEmpty {
@@ -327,6 +338,7 @@ private struct ReviewInboxCard: View {
     let accounts: [Account]
     let categories: [FinCategory]
     let onSelect: (FinTransaction) -> Void
+    let onClearAll: () -> Void
 
     var body: some View {
         if !items.isEmpty {
@@ -341,6 +353,9 @@ private struct ReviewInboxCard: View {
                         .background(Palette.warning, in: Capsule())
                         .foregroundStyle(.black)
                     Spacer()
+                    Button("Hammasi ko'rildi", action: onClearAll)
+                        .font(.caption.weight(.semibold))
+                        .accessibilityIdentifier("reviewClearAll")
                 }
                 .padding(.horizontal, 4)
                 GlassCard(padding: 6, tint: Palette.warning) {

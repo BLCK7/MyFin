@@ -196,7 +196,7 @@ struct TodaySpendingIntent: AppIntent {
         let txs = (try? ctx.fetch(FetchDescriptor<FinTransaction>())) ?? []
         let cal = Calendar.current
         var today = 0.0
-        for t in txs where t.kind == .expense && cal.isDateInToday(t.date) {
+        for t in txs where t.countsAsExpense && cal.isDateInToday(t.date) {
             today += RateStore.shared.convert(t.amount, from: t.currency, to: base)
         }
         let s = FinanceEngine.summary(accounts: [], transactions: txs, debts: [], rates: RateStore.shared, base: base)

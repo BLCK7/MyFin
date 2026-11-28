@@ -84,7 +84,8 @@ enum SMSParser {
         "kartaga", "na kartu", "s karty", "c karti", "s karti", "operatsiya", "operaciya", "tranzaksiya",
         "pul", "yechish", "yechildi", "kartangiz", "kartangizga", "kartangizdan", "to'ldirildi", "to‘ldirildi",
         "toʻldirildi", "to’ldirildi", "hisobingiz", "hisobingizga", "muvaffaqiyatli", "qildingiz", "siz", "uchun",
-        "списание", "пополнение", "оплата", "покупка"
+        "списание", "пополнение", "оплата", "покупка",
+        "payme", "click", "paynet", "uzum", "uzum bank", "tbc", "tbc uz", "apelsin", "anorbank", "wallet"
     ]
 
     private static let currencyPattern = #"(UZS|USD|EUR|RUB|SUM|SO['‘ʻ’`]?M|СУМ|СЎМ|\$|€|₽)"#

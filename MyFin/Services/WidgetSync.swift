@@ -35,8 +35,8 @@ enum WidgetSync {
         var todayExp = 0.0, todayInc = 0.0
         for t in txs where cal.isDateInToday(t.date) {
             let v = rates.convert(t.amount, from: t.currency, to: base)
-            if t.kind == .expense { todayExp += v }
-            if t.kind == .income { todayInc += v }
+            if t.countsAsExpense { todayExp += v }
+            if t.countsAsIncome { todayInc += v }
         }
 
         let snapshot = WidgetSnapshot(

@@ -32,8 +32,8 @@ struct AnalyticsView: View {
             var inc = 0.0, exp = 0.0
             for t in transactions where cal.isDate(t.date, equalTo: m, toGranularity: .month) {
                 let v = rates.convert(t.amount, from: t.currency, to: base)
-                if t.kind == .income { inc += v }
-                if t.kind == .expense { exp += v }
+                if t.countsAsIncome { inc += v }
+                if t.countsAsExpense { exp += v }
             }
             let label = f.string(from: m).capitalized
             result.append(MonthPoint(month: m, label: label, kind: "Kirim", amount: inc))
@@ -62,7 +62,7 @@ struct AnalyticsView: View {
     private var topMerchants: [(String, Double)] {
         let cal = Calendar.current
         var d: [String: Double] = [:]
-        for t in transactions where t.kind == .expense && !t.merchant.isEmpty
+        for t in transactions where t.countsAsExpense && !t.merchant.isEmpty
             && cal.isDate(t.date, equalTo: selectedMonth, toGranularity: .month) {
             d[t.merchant, default: 0] += rates.convert(t.amount, from: t.currency, to: base)
         }
@@ -74,8 +74,8 @@ struct AnalyticsView: View {
         var inc = 0.0, exp = 0.0
         for t in transactions where cal.isDate(t.date, equalTo: selectedMonth, toGranularity: .month) {
             let v = rates.convert(t.amount, from: t.currency, to: base)
-            if t.kind == .income { inc += v }
-            if t.kind == .expense { exp += v }
+            if t.countsAsIncome { inc += v }
+            if t.countsAsExpense { exp += v }
         }
         guard inc > 0 else { return nil }
         return (inc - exp) / inc

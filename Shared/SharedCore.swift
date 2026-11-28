@@ -57,6 +57,14 @@ enum Money {
         return f.string(from: NSNumber(value: value)) ?? "0"
     }
 
+    /// Text for an editable amount field: no grouping, and tiyin/cents kept whenever the value has them.
+    static func editString(_ value: Double, _ code: String) -> String {
+        let hasFraction = abs(value - value.rounded()) >= 0.005
+        return number(value, decimals: hasFraction ? 2 : decimals(code))
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "\u{00A0}", with: "")
+    }
+
     static func format(_ value: Double, _ code: String, signed: Bool = false) -> String {
         let num = number(abs(value), decimals: decimals(code))
         var sign = value < 0 ? "−" : ""

@@ -399,10 +399,16 @@ struct VaultDetailView: View {
             Button("O'chirish", role: .destructive) {
                 if let stored {
                     Notifier.cancel(["vault-\(stored.id.uuidString)-30", "vault-\(stored.id.uuidString)-7"])
-                    context.delete(stored)
-                    try? context.save()
+                    let ctx = context
+                    dismiss()
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(500))
+                        ctx.delete(stored)
+                        try? ctx.save()
+                    }
+                } else {
+                    dismiss()
                 }
-                dismiss()
             }
         }
     }

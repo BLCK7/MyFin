@@ -120,9 +120,13 @@ struct RecurringEditor: View {
                     Section {
                         Button("O'chirish", role: .destructive) {
                             Notifier.cancel(["recurring-\(existing.id.uuidString)"])
-                            context.delete(existing)
-                            try? context.save()
+                            let ctx = context
                             dismiss()
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .milliseconds(450))
+                                ctx.delete(existing)
+                                try? ctx.save()
+                            }
                         }
                     }
                 }
@@ -288,9 +292,13 @@ struct CategoryEditor: View {
                 if let existing, !existing.isSystem {
                     Section {
                         Button("Kategoriyani o'chirish", role: .destructive) {
-                            context.delete(existing)
-                            try? context.save()
+                            let ctx = context
                             dismiss()
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .milliseconds(450))
+                                ctx.delete(existing)
+                                try? ctx.save()
+                            }
                         }
                     }
                 }

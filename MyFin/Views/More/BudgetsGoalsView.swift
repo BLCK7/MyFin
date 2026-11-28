@@ -195,10 +195,14 @@ struct BudgetEditor: View {
                 if let existing {
                     Section {
                         Button("Limitni o'chirish", role: .destructive) {
-                            context.delete(existing)
-                            try? context.save()
-                            WidgetSync.schedule(context)
+                            let ctx = context
                             dismiss()
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .milliseconds(450))
+                                ctx.delete(existing)
+                                try? ctx.save()
+                                WidgetSync.schedule(ctx)
+                            }
                         }
                     }
                 }
@@ -389,9 +393,13 @@ struct GoalEditor: View {
                 if let existing {
                     Section {
                         Button("Maqsadni o'chirish", role: .destructive) {
-                            context.delete(existing)
-                            try? context.save()
+                            let ctx = context
                             dismiss()
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .milliseconds(450))
+                                ctx.delete(existing)
+                                try? ctx.save()
+                            }
                         }
                     }
                 }
