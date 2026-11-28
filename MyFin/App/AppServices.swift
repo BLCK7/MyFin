@@ -131,12 +131,19 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         let idString = info["txID"] as? String
         let balanceAccount = info["balanceAccountID"] as? String
         let diff = info["diff"] as? Double
+        let suspect = (info["suspectTxID"] as? String).flatMap(UUID.init(uuidString:))
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
                 if let idString, let id = UUID(uuidString: idString) {
                     ReviewHandler.handle(txID: id, action: action, text: text)
-                } else if let balanceAccount, let id = UUID(uuidString: balanceAccount), let diff, action == "recordDiff" {
-                    FinanceEngine.recordBalanceDifference(accountID: id, diff: diff, ctx: DataStore.context)
+                } else if let balanceAccount, let id = UUID(uuidString: balanceAccount) {
+                    if action == "recordDiff", let diff {
+                        FinanceEngine.recordBalanceDifference(accountID: id, diff: diff, ctx: DataStore.context)
+                    } else if action == "removeDup", let suspect {
+                        FinanceEngine.removeDuplicate(txID: suspect, ctx: DataStore.context)
+                    } else if action == "moveHere", let suspect {
+                        FinanceEngine.moveTransaction(txID: suspect, to: id, ctx: DataStore.context)
+                    }
                 }
             }
             completionHandler()

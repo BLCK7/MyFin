@@ -219,6 +219,7 @@ struct SettingsView: View {
 
 struct AutomationView: View {
     @Environment(\.modelContext) private var context
+    @Query(sort: \Account.sortOrder) private var accounts: [Account]
     @Environment(\.openURL) private var openURL
     @State private var sample = "Pokupka: 50 000.00 UZS, KORZINKA SUPERMARKET, karta ***1234, 27.11.26 10:15, Balans: 1 234 567.00 UZS"
     @State private var parsed: ParsedSMS?
@@ -281,6 +282,8 @@ struct AutomationView: View {
                 }
 
                 logCard
+
+                sourcesCard
 
                 Text("Banklar bo'yicha sozlash").font(.headline).padding(.top, 4)
                 ForEach(guides) { g in
@@ -386,6 +389,46 @@ struct AutomationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { log = AutomationLog.all() }
         .refreshable { log = AutomationLog.all() }
+    }
+
+    private var sourcesCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Kartalar holati", systemImage: "creditcard.and.123").font(.headline)
+                Text("Har bir karta uchun ishonchli manba — kartani chiqargan bankning ilovasi yoki SMS. Payme, Paynet, Click, Wallet va boshqa ilovalar xabari “tasdiqlanmagan” (⏱) bo'lib yoziladi; bank xabari kelganda ular bitta operatsiyaga birlashadi, summa bankniki bo'ladi.")
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(accounts.filter { $0.kind == .card && !$0.isArchived }) { a in
+                    let src = SourceStatus.lastConfirmed(a.id)
+                    let issuer = FinanceEngine.issuerKey(of: a)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text(a.displayName).font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Image(systemName: src != nil ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(src != nil ? Palette.income : Palette.warning)
+                        }
+                        if issuer == nil || a.cardLast4.isEmpty {
+                            Text("Hisoblar'da \(issuer == nil ? "Bank nomini" : "")\(issuer == nil && a.cardLast4.isEmpty ? " va " : "")\(a.cardLast4.isEmpty ? "oxirgi 4 raqamni" : "") kiriting.")
+                                .font(.caption).foregroundStyle(Palette.warning)
+                        }
+                        if let src {
+                            Text("Bank xabari: \(src.tag) · \(src.date.formatted(.relative(presentation: .named)))")
+                                .font(.caption).foregroundStyle(.secondary)
+                        } else {
+                            Text("Bankdan karta raqamli xabar hali kelmagan — shu bank ilovasi uchun avtomatizatsiya sozlang.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        if let b = SourceStatus.lastBalance(a.id) {
+                            Text("Qoldiq bank bilan solishtirildi: \(b.formatted(.relative(presentation: .named)))")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.primary.opacity(0.05), in: .rect(cornerRadius: 12))
+                }
+            }
+        }
     }
 
     private var logCard: some View {

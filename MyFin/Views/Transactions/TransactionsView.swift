@@ -48,6 +48,12 @@ struct TransactionRow: View {
                         Image(systemName: transaction.source.icon)
                             .font(.caption2)
                     }
+                    if transaction.provisional {
+                        Image(systemName: "clock.badge.questionmark")
+                            .font(.caption2)
+                            .foregroundStyle(Palette.warning)
+                            .accessibilityLabel("Bank tasdiqlamagan")
+                    }
                     Text(showDate ? "\(accountName) · \(transaction.date.uzShort)" : accountName)
                         .lineLimit(1)
                 }

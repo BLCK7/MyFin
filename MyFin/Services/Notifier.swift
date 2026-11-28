@@ -121,6 +121,8 @@ extension Notifier {
     static let reviewExpenseCategory = "TX_REVIEW_EXP"
     static let reviewIncomeCategory = "TX_REVIEW_INC"
     static let balanceMismatchCategory = "BAL_MISMATCH"
+    static let balanceDuplicateCategory = "BAL_MISMATCH_DUP"
+    static let balanceMoveCategory = "BAL_MISMATCH_MOVE"
 
     @MainActor
     static func registerReviewCategories(_ context: ModelContext? = nil) {
@@ -142,23 +144,44 @@ extension Notifier {
                                          intentIdentifiers: [], options: [.customDismissAction])
         let inc = UNNotificationCategory(identifier: reviewIncomeCategory, actions: actions(.income),
                                          intentIdentifiers: [], options: [.customDismissAction])
-        let bal = UNNotificationCategory(
-            identifier: balanceMismatchCategory,
-            actions: [UNNotificationAction(identifier: "recordDiff", title: "Farqni operatsiya sifatida yozish", options: []),
-                      UNNotificationAction(identifier: "open", title: "Ochish", options: [.foreground])],
+        let recordDiff = UNNotificationAction(identifier: "recordDiff", title: "Farqni operatsiya sifatida yozish", options: [])
+        let openApp = UNNotificationAction(identifier: "open", title: "Ochish", options: [.foreground])
+        let bal = UNNotificationCategory(identifier: balanceMismatchCategory, actions: [recordDiff, openApp],
+                                         intentIdentifiers: [], options: [])
+        let dup = UNNotificationCategory(
+            identifier: balanceDuplicateCategory,
+            actions: [UNNotificationAction(identifier: "removeDup", title: "Ortiqchasini o'chirish", options: [.destructive]),
+                      recordDiff, openApp],
             intentIdentifiers: [], options: [])
-        UNUserNotificationCenter.current().setNotificationCategories([exp, inc, bal])
+        let move = UNNotificationCategory(
+            identifier: balanceMoveCategory,
+            actions: [UNNotificationAction(identifier: "moveHere", title: "Shu kartaga ko'chirish", options: []),
+                      recordDiff, openApp],
+            intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([exp, inc, bal, dup, move])
     }
 
     @MainActor
-    static func postBalanceMismatch(account: Account, bank: Double, local: Double, diff: Double) {
+    static func postBalanceMismatch(account: Account, bank: Double, local: Double, diff: Double,
+                                    suspect: (tx: FinTransaction, action: String)? = nil) {
         let content = UNMutableNotificationContent()
         content.title = "Balans mos emas · \(account.displayName)"
-        content.body = "Bankda: \(Money.format(bank, account.currency)) · MyFin'da: \(Money.format(local, account.currency)) · Farq: \(Money.format(diff, account.currency, signed: true)). Yozilmagan operatsiya bo'lishi mumkin. Balans bank bo'yicha yangilandi."
+        var hint = diff < 0 ? "Yozilmagan operatsiya bo'lishi mumkin." : "Biror operatsiya ortiqcha yozilgan bo'lishi mumkin."
+        if let s = suspect {
+            let what = "“\(s.tx.title)” (\(Money.format(s.tx.amount, s.tx.currency)), \(s.tx.date.formatted(date: .omitted, time: .shortened)))"
+            hint = s.action == "removeDup" ? "Ehtimol \(what) ikki marta yozilgan." : "Ehtimol \(what) boshqa kartaga yozilgan."
+        }
+        content.body = "Bankda: \(Money.format(bank, account.currency)) · MyFin'da: \(Money.format(local, account.currency)) · Farq: \(Money.format(diff, account.currency, signed: true)). \(hint) Balans bank bo'yicha yangilandi."
         content.sound = .default
-        content.categoryIdentifier = balanceMismatchCategory
         content.threadIdentifier = "balance-check"
-        content.userInfo = ["balanceAccountID": account.id.uuidString, "diff": diff]
+        var info: [String: Any] = ["balanceAccountID": account.id.uuidString, "diff": diff]
+        if let s = suspect {
+            info["suspectTxID"] = s.tx.id.uuidString
+            content.categoryIdentifier = s.action == "removeDup" ? balanceDuplicateCategory : balanceMoveCategory
+        } else {
+            content.categoryIdentifier = balanceMismatchCategory
+        }
+        content.userInfo = info
         UNUserNotificationCenter.current().add(UNNotificationRequest(
             identifier: "balance-\(account.id.uuidString)", content: content, trigger: nil))
     }

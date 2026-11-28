@@ -57,6 +57,8 @@ final class FinTransaction {
     var rawText: String = ""
     var balanceApplied: Bool = true
     var needsReview: Bool = false
+    /// Reported only by a payment app / Wallet / a message without card number; the bank has not confirmed it yet.
+    var provisional: Bool = false
 
     init(kind: TxKind, amount: Double, currency: String, accountID: UUID?, toAccountID: UUID? = nil,
          toAmount: Double = 0, categoryName: String = "", merchant: String = "", note: String = "",

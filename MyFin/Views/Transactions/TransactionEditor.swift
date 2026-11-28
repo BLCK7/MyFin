@@ -95,6 +95,12 @@ struct TransactionEditor: View {
                     let raw = existing?.rawText ?? prefill?.rawText ?? ""
                     Section("Manba") {
                         Label(src.title, systemImage: src.icon)
+                        if existing?.provisional == true {
+                            Label("Bank hali tasdiqlamagan: faqat to'lov ilovasi yoki Wallet xabar bergan. Bank xabari kelsa, avtomatik birlashadi.",
+                                  systemImage: "clock.badge.questionmark")
+                                .font(.caption)
+                                .foregroundStyle(Palette.warning)
+                        }
                         if let url = Self.receiptURL(in: raw) {
                             Link(destination: url) {
                                 Label("Elektron chekni ochish", systemImage: "doc.text.magnifyingglass")
@@ -217,6 +223,7 @@ struct TransactionEditor: View {
                 FinanceEngine.learn(category: cat, from: t, ctx: context)
             }
             t.needsReview = false
+            t.provisional = false
             FinanceEngine.applyEffect(of: t, sign: 1, ctx: context)
             try? context.save()
             UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["review-\(t.id.uuidString)"])
