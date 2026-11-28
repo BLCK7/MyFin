@@ -230,6 +230,9 @@ struct AutomationView: View {
     [TBC UZ] Pul yechish, karta: *7758. 1,000.00 UZS. Balans: 1,530.34 UZS.
     [Uzum Bank | Payment completed] 5 000 UZS, card *7675, UB P2P VISAUZUM2HUMO FEE. Available: 734,60 UZS
     [SMS] HUMOCARD *9300: oplata 2000.00 UZS; Humo to Visa>Tashken; 26-11-27 18:57;  Dostupno: 62.22 UZS
+    [SMS] To'lov: TBC UZCARD2VISA SALOM, UZ,27.11.26 18:58,karta ***7169. Miqdor:3000.00 UZS Qoldiq:25431.50 UZS
+    [TBC UZ | Karta to’ldirildi] *7758 kartangiz to‘ldirildi: 3,000.00 UZS. Balans: 4,530.34 UZS.
+    [TBC UZ] Pul yechish, karta: *7758. 3,000.00 UZS. Balans: 1,530.34 UZS.
     [SMS] Kartaga o'tkazma: TBC VISA SALOM2UZCARD, UZ,27.11.26 19:01,karta ***7169. Miqdor:3000.00 UZS Qoldiq:28431.50 UZS
     """
     @State private var log: [AutomationEvent] = []

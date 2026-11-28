@@ -270,6 +270,10 @@ enum FinanceEngine {
 
     static func guessCategory(text: String, kind: TxKind, ctx: ModelContext) -> String {
         let lower = text.lowercased()
+        if kind != .transfer, SMSParser.transferCode(in: text) != nil || text.contains(" → ") {
+            let name = kind == .income ? "Kirim o'tkazma" : "O'tkazmalar"
+            if categories(ctx).contains(where: { $0.name == name && $0.kind == kind }) { return name }
+        }
         var bestName: String? = nil
         var bestLen = 0
         var bestOrder = Int.max

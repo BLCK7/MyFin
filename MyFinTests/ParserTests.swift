@@ -132,6 +132,25 @@ final class ParserTests: XCTestCase {
         XCTAssertEqual(r.amount, 3000)
         XCTAssertEqual(r.last4, "7169")
         XCTAssertEqual(r.balance ?? 0, 28431.50, accuracy: 0.001)
+        XCTAssertEqual(r.merchant, "Salom → Uzcard")
+    }
+
+    func testRealUzcardDebit() {
+        let r = p("To'lov: TBC UZCARD2VISA SALOM, UZ,27.11.26 18:58,karta ***7169. Miqdor:3000.00 UZS Qoldiq:25431.50 UZS")
+        XCTAssertFalse(r.isIncome)
+        XCTAssertEqual(r.amount, 3000)
+        XCTAssertEqual(r.currency, "UZS")
+        XCTAssertEqual(r.last4, "7169")
+        XCTAssertEqual(r.balance ?? 0, 25431.50, accuracy: 0.001)
+        XCTAssertNil(r.ignoreReason)
+        XCTAssertEqual(r.merchant, "Uzcard → Visa Salom")
+    }
+
+    func testTransferCodes() {
+        XCTAssertEqual(SMSParser.transferCode(in: "UB P2P VISAUZUM2HUMO FEE."), "Visa Uzum → Humo")
+        XCTAssertEqual(SMSParser.transferCode(in: "TBC VISA SALOM2UZCARD, UZ"), "Salom → Uzcard")
+        XCTAssertNil(SMSParser.transferCode(in: "UB P2P transfer"))
+        XCTAssertNil(SMSParser.transferCode(in: "Coffee2Go Tashkent"))
     }
 
     func testRealHumoSMS() {

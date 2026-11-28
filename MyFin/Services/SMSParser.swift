@@ -233,8 +233,43 @@ enum SMSParser {
         return v.isEmpty ? nil : v
     }
 
+    private static let cardTokens: [(key: String, name: String)] = [
+        ("mastercard", "Mastercard"), ("uzcard", "Uzcard"), ("humo", "Humo"), ("visa", "Visa"),
+        ("uzum", "Uzum"), ("salom", "Salom"), ("tbc", "TBC")
+    ]
+
+    /// Splits a run of card/bank names written together ("VISAUZUM") into words; nil if anything else is in it.
+    private static func cardWords(_ s: String) -> [String]? {
+        var rest = Substring(s.lowercased())
+        var out: [String] = []
+        while !rest.isEmpty {
+            guard let t = cardTokens.first(where: { rest.hasPrefix($0.key) }) else { return nil }
+            out.append(t.name)
+            rest = rest.dropFirst(t.key.count)
+        }
+        return out.isEmpty ? nil : out
+    }
+
+    /// Card-to-card transfer codes in bank messages: "UZCARD2VISA SALOM" → "Uzcard → Visa Salom",
+    /// "VISAUZUM2HUMO" → "Visa Uzum → Humo".
+    static func transferCode(in text: String) -> String? {
+        guard let re = try? NSRegularExpression(pattern: #"\b([A-Za-z]+)2([A-Za-z]+)(?=(\s+[A-Za-z]+)?)"#) else { return nil }
+        let ns = text as NSString
+        for m in re.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            guard let from = cardWords(ns.substring(with: m.range(at: 1))),
+                  var to = cardWords(ns.substring(with: m.range(at: 2))) else { continue }
+            if m.range(at: 3).location != NSNotFound, m.range(at: 3).length > 0,
+               let extra = cardWords(ns.substring(with: m.range(at: 3)).trimmingCharacters(in: .whitespaces)) {
+                to += extra
+            }
+            return "\(from.joined(separator: " ")) → \(to.joined(separator: " "))"
+        }
+        return nil
+    }
+
     static func merchant(in text: String) -> String {
         if let q = quoted(in: text) { return q }
+        if let code = transferCode(in: text) { return code }
         if let re = try? NSRegularExpression(pattern: #"\b(humo|uzcard|visa|mastercard)\s+to\s+(humo|uzcard|visa|mastercard)\b"#,
                                              options: [.caseInsensitive]),
            let m = re.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) {

@@ -217,7 +217,7 @@ final class LedgerTests: XCTestCase {
     private let tbcTopUp = "*7758 kartangiz to‘ldirildi: 5,000.00 UZS. Balans: 7,530.34 UZS."
 
     func testUzcardToVisaTransferBankFirst() {
-        _ = FinanceEngine.processSMS("Kartadan o'tkazma: TBC VISA, UZ,28.11.26 12:17,karta ***7169. Miqdor:5000.00 UZS Qoldiq:20431.50 UZS", ctx: ctx)
+        _ = FinanceEngine.processSMS("To'lov: TBC UZCARD2VISA SALOM, UZ,28.11.26 12:17,karta ***7169. Miqdor:5000.00 UZS Qoldiq:20431.50 UZS", ctx: ctx)
         _ = FinanceEngine.processNotification(title: "Karta to’ldirildi", body: tbcTopUp, app: "TBC UZ", ctx: ctx)
         XCTAssertEqual(txs.count, 1)
         XCTAssertEqual(txs[0].kind, .transfer)
@@ -229,7 +229,7 @@ final class LedgerTests: XCTestCase {
 
     func testUzcardToVisaTransferWithFeeTBCFirst() {
         _ = FinanceEngine.processNotification(title: "Karta to’ldirildi", body: tbcTopUp, app: "TBC UZ", ctx: ctx)
-        _ = FinanceEngine.processSMS("Kartadan o'tkazma: TBC VISA, UZ,28.11.26 12:17,karta ***7169. Miqdor:5025.00 UZS Qoldiq:20406.50 UZS", ctx: ctx)
+        _ = FinanceEngine.processSMS("To'lov: TBC UZCARD2VISA SALOM, UZ,28.11.26 12:17,karta ***7169. Miqdor:5025.00 UZS Qoldiq:20406.50 UZS", ctx: ctx)
         XCTAssertEqual(txs.count, 1)
         let t = txs[0]
         XCTAssertEqual(t.kind, .transfer)
@@ -239,6 +239,50 @@ final class LedgerTests: XCTestCase {
         XCTAssertEqual(t.toAmount, 5000)
         XCTAssertEqual(visa.balance, 7530.34, accuracy: 0.001)
         XCTAssertEqual(uzcard.balance, 20406.50, accuracy: 0.001)
+    }
+
+    // The owner's real round trip on 27.11: Uzcard → Visa 3 000 at 18:58, then Visa → Uzcard 3 000 at 19:01.
+    private let uzcardOut = "To'lov: TBC UZCARD2VISA SALOM, UZ,27.11.26 18:58,karta ***7169. Miqdor:3000.00 UZS Qoldiq:25431.50 UZS"
+    private let uzcardIn = "Kartaga o'tkazma: TBC VISA SALOM2UZCARD, UZ,27.11.26 19:01,karta ***7169. Miqdor:3000.00 UZS Qoldiq:28431.50 UZS"
+    private let visaIn = "*7758 kartangiz to‘ldirildi: 3,000.00 UZS. Balans: 5,530.34 UZS."
+    private let visaOut = "Pul yechish, karta: *7758. 3,000.00 UZS. Balans: 2,530.34 UZS."
+
+    private func assertRoundTrip(file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(txs.count, 2, file: file, line: line)
+        XCTAssertTrue(txs.allSatisfy { $0.kind == .transfer }, file: file, line: line)
+        let pairs = Set(txs.map { "\($0.accountID?.uuidString ?? "")>\($0.toAccountID?.uuidString ?? "")" })
+        XCTAssertEqual(pairs, ["\(uzcard.id.uuidString)>\(visa.id.uuidString)", "\(visa.id.uuidString)>\(uzcard.id.uuidString)"],
+                       file: file, line: line)
+        XCTAssertEqual(uzcard.balance, 28431.50, accuracy: 0.001, file: file, line: line)
+        XCTAssertEqual(visa.balance, 2530.34, accuracy: 0.001, file: file, line: line)
+    }
+
+    func testRealUzcardVisaRoundTripInOrder() {
+        uzcard.balance = 28_431.50
+        _ = FinanceEngine.processSMS(uzcardOut, ctx: ctx)
+        _ = FinanceEngine.processNotification(title: "Karta to’ldirildi", body: visaIn, app: "TBC UZ", ctx: ctx)
+        tbc(visaOut)
+        _ = FinanceEngine.processSMS(uzcardIn, ctx: ctx)
+        assertRoundTrip()
+    }
+
+    func testRealUzcardVisaRoundTripSMSLate() {
+        uzcard.balance = 28_431.50
+        _ = FinanceEngine.processNotification(title: "Karta to’ldirildi", body: visaIn, app: "TBC UZ", ctx: ctx)
+        tbc(visaOut)
+        _ = FinanceEngine.processSMS(uzcardOut, ctx: ctx)
+        _ = FinanceEngine.processSMS(uzcardIn, ctx: ctx)
+        assertRoundTrip()
+    }
+
+    func testUnpairedUzcardDebitIsTransferCategory() {
+        _ = FinanceEngine.processSMS(uzcardOut, ctx: ctx)
+        XCTAssertEqual(txs.count, 1)
+        XCTAssertEqual(txs[0].kind, .expense)
+        XCTAssertEqual(txs[0].accountID, uzcard.id)
+        XCTAssertEqual(txs[0].merchant, "Uzcard → Visa Salom")
+        XCTAssertEqual(txs[0].categoryName, "O'tkazmalar")
+        XCTAssertEqual(uzcard.balance, 25431.50, accuracy: 0.001)
     }
 
     func testOperatorSMSIgnored() {
