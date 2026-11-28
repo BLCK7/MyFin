@@ -153,6 +153,7 @@ struct MainTabs: View {
                         .symbolEffect(.bounce, value: addKind)
                         .frame(maxWidth: .infinity)
                 }
+                .accessibilityIdentifier("accessoryAdd")
                 Divider().frame(height: 18)
                 Button {
                     Haptics.soft()

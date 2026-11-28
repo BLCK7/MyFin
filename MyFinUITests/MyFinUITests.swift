@@ -34,15 +34,30 @@ final class MyFinUITests: XCTestCase {
     }
 
     /// First element of the query that can actually be tapped (other tabs keep their views alive but hidden).
-    /// Lowest y a tap can safely land on: above the floating "Operatsiya qo'shish" bar and the tab bar when they are on screen.
+    /// Lowest y a tap can safely land on: above the floating "Operatsiya qo'shish" bar and the tab bar.
+    /// Frames that do not look like a bottom bar (top half of the screen) are ignored.
     private func bottomLimit() -> CGFloat {
         let h = app.windows.firstMatch.frame.height
-        var limit = h > 0 ? h - 30 : 800
-        let acc = app.buttons["Operatsiya qo'shish"]
-        if acc.exists && acc.isHittable && acc.frame.height > 0 { limit = min(limit, acc.frame.minY - 6) }
-        let bar = app.tabBars.firstMatch
-        if bar.exists && bar.isHittable && bar.frame.height > 0 { limit = min(limit, bar.frame.minY - 6) }
+        let screen = h > 300 ? h : 874
+        var limit = screen - 30
+        for e in [app.buttons["accessoryAdd"], app.tabBars.firstMatch] where e.exists {
+            let f = e.frame
+            if f.height > 0 && f.minY > screen * 0.6 { limit = min(limit, f.minY - 6) }
+        }
         return limit
+    }
+
+    private func debugDump(_ query: XCUIElementQuery, _ what: String) {
+        var lines = ["DEBUG \(what): limit=\(bottomLimit()) window=\(app.windows.firstMatch.frame)"]
+        let acc = app.buttons["accessoryAdd"]
+        lines.append("  accessory exists=\(acc.exists) hittable=\(acc.exists && acc.isHittable) frame=\(acc.exists ? acc.frame : .zero)")
+        let bar = app.tabBars.firstMatch
+        lines.append("  tabbar exists=\(bar.exists) frame=\(bar.exists ? bar.frame : .zero)")
+        for i in 0..<min(query.count, 8) {
+            let e = query.element(boundBy: i)
+            lines.append("  [\(i)] \(e.elementType.rawValue) '\(e.label.prefix(40))' exists=\(e.exists) hittable=\(e.exists && e.isHittable) frame=\(e.exists ? e.frame : .zero)")
+        }
+        print(lines.joined(separator: "\n"))
     }
 
     private func hittable(_ query: XCUIElementQuery, timeout: TimeInterval) -> XCUIElement? {
@@ -71,6 +86,7 @@ final class MyFinUITests: XCTestCase {
     private func tap(_ query: XCUIElementQuery, _ what: String, timeout: TimeInterval = 6,
                      file: StaticString = #filePath, line: UInt = #line) -> Bool {
         guard let e = hittable(query, timeout: timeout) else {
+            debugDump(query, what)
             XCTFail("Topilmadi: \(what)", file: file, line: line)
             shot("MISSING-\(what.replacingOccurrences(of: " ", with: "_"))")
             return false

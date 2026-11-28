@@ -47,7 +47,7 @@ enum SeedData {
                      keywords: "kommunal,elektr,hududgaz,suv,issiqlik,tozamakon,energosbyt,svet,gaz"),
         CategorySeed(name: "Aloqa va internet", icon: "wifi", color: "#06B6D4", kind: .expense,
                      keywords: "uzmobile,beeline,ucell,mobiuz,uztelecom,internet,sarkor,comnet,turon,tps"),
-        CategorySeed(name: "Obunalar", icon: "repeat", color: "#A855F7", kind: .expense,
+        CategorySeed(name: "Obunalar", icon: "play.rectangle.fill", color: "#A855F7", kind: .expense,
                      keywords: "apple.com,icloud,google,netflix,spotify,youtube,subscription,obuna,openai,chatgpt,claude,anthropic,github"),
         CategorySeed(name: "Kiyim-kechak", icon: "tshirt.fill", color: "#EC4899", kind: .expense,
                      keywords: "zara,lc waikiki,defacto,kiyim,poyabzal,shoes,mango,koton"),
@@ -102,7 +102,7 @@ enum SeedData {
                 ctx.insert(FinCategory(name: c.name, icon: c.icon, colorHex: c.color, kind: c.kind,
                                        keywords: c.keywords, sortOrder: i, isSystem: true))
             }
-            defaults.set(3, forKey: "seedVersion")
+            defaults.set(4, forKey: "seedVersion")
             try? ctx.save()
             return
         }
@@ -130,6 +130,13 @@ enum SeedData {
                 order += 1
             }
             defaults.set(3, forKey: "seedVersion")
+            try? ctx.save()
+        }
+        if defaults.integer(forKey: "seedVersion") < 4 {
+            // "repeat" looked like the transfer arrows in lists.
+            let all = (try? ctx.fetch(FetchDescriptor<FinCategory>())) ?? []
+            for c in all where c.name == "Obunalar" && c.icon == "repeat" { c.icon = "play.rectangle.fill" }
+            defaults.set(4, forKey: "seedVersion")
             try? ctx.save()
         }
     }
